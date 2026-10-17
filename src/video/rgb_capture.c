@@ -43,10 +43,15 @@ void set_capture_frequency(uint32_t frequency)
   uint16_t div_int;
   uint8_t div_frac;
 
+  // Always store: the frame handler derives its sync-pulse thresholds
+  // (h_sync_pulse_2 / v_sync_pulse in start_capture) from this value in
+  // BOTH sync modes. In EXT mode it must equal the effective sample rate,
+  // i.e. CAP_F_PIN frequency / ext_clk_divider (14 MHz / 2 = 7 MHz for
+  // Pentagon F14M). The PIO clkdiv below applies to SELF mode only.
+  settings.frequency = frequency;
+
   if (settings.cap_sync_mode == SELF)
   {
-    settings.frequency = frequency;
-
     pio_calculate_clkdiv_from_float((float)clock_get_hz(clk_sys) / (settings.frequency * 12.0), &div_int, &div_frac);
 
     static_assert(REG_FIELD_WIDTH(PIO_SM0_CLKDIV_INT) == 16, "");
@@ -291,16 +296,20 @@ void start_capture()
   // Patch CAP_F_PIN wait instructions in pio_capture_1 with actual pin from g_config.h
   if (settings.cap_sync_mode == EXT)
   {
-    PIO_CAP->instr_mem[offset + pio_capture_1_offset_wait_f_low_1] = pio_encode_wait_gpio(false, CAP_F_PIN);
-    PIO_CAP->instr_mem[offset + pio_capture_1_offset_wait_f_high_1] = pio_encode_wait_gpio(true, CAP_F_PIN);
+    PIO_CAP->instr_mem[offset + pio_capture_1_offset_wait_f_low_1a] = pio_encode_wait_gpio(false, CAP_F_PIN);
+    PIO_CAP->instr_mem[offset + pio_capture_1_offset_wait_f_high_1a] = pio_encode_wait_gpio(true, CAP_F_PIN);
+    PIO_CAP->instr_mem[offset + pio_capture_1_offset_wait_f_low_1b] = pio_encode_wait_gpio(false, CAP_F_PIN);
+    PIO_CAP->instr_mem[offset + pio_capture_1_offset_wait_f_high_1b] = pio_encode_wait_gpio(true, CAP_F_PIN) | pio_encode_delay(1);
     PIO_CAP->instr_mem[offset + pio_capture_1_offset_wait_f_low_2] = pio_encode_wait_gpio(false, CAP_F_PIN);
-    PIO_CAP->instr_mem[offset + pio_capture_1_offset_wait_f_high_2] = pio_encode_wait_gpio(true, CAP_F_PIN);
+    PIO_CAP->instr_mem[offset + pio_capture_1_offset_wait_f_high_2a] = pio_encode_wait_gpio(true, CAP_F_PIN);
+    PIO_CAP->instr_mem[offset + pio_capture_1_offset_wait_f_high_2b] = pio_encode_wait_gpio(true, CAP_F_PIN) | pio_encode_delay(1);
   }
 
   sm_config_set_in_pins(&c, CAP_PIN_D0);
   sm_config_set_jmp_pin(&c, CAP_HS_PIN);
 
-  sm_config_set_in_shift(&c, true, false, 32); // 32-bit push with direct byte-order DMA reads
+  // 32-bit push with direct byte-order DMA reads; EXT: autopush (pio_capture_1 has no push instructions)
+  sm_config_set_in_shift(&c, true, settings.cap_sync_mode == EXT, 32);
   sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX);
 
   uint16_t div_int = 1;
@@ -349,7 +358,8 @@ void start_capture()
       dma_ch1,
       &c1,
       &dma_hw->ch[dma_ch0].write_addr, // write address
-      cap_dma_buf_addr,                // read address (with ring wrapping)
+      &cap_dma_buf_addr[1],            // read address (with ring wrapping): ch0 already
+                                       // writes buffer 0, the first reload is buffer 1
       1,                               // transfer 1 address pointer
       false                            // don't start yet
   );
