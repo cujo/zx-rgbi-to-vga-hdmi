@@ -103,6 +103,7 @@ void print_video_out_menu()
     {
     case DVI:
         Serial.println("  2    720x576 @50Hz (div 2)");
+        Serial.println("  3    720x576 @48.8Hz (div 2, Pentagon)");
         break;
 
     case VGA:
@@ -280,6 +281,10 @@ void print_video_out_mode()
 
     case MODE_720x576_50Hz:
         Serial.println("720x576 @50Hz");
+        break;
+
+    case MODE_720x576_48Hz:
+        Serial.println("720x576 @48.8Hz");
         break;
 
     case MODE_800x600_60Hz:
@@ -665,12 +670,12 @@ void handle_serial_menu()
                     break;
 
                 case '3':
-                    if (settings.video_out_type == VGA)
-                    {
+                    if (settings.video_out_type == DVI)
+                        settings.video_out_mode = MODE_720x576_48Hz;
+                    else
                         settings.video_out_mode = MODE_1024x768_60Hz_d3;
-                        print_video_out_mode();
-                    }
 
+                    print_video_out_mode();
                     break;
 
                 case '4':

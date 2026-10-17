@@ -67,7 +67,8 @@ void check_settings(settings_t *settings)
     settings->video_out_type = VIDEO_OUT_TYPE_DEF;
 
   if (settings->video_out_mode > VIDEO_OUT_MODE_MAX ||
-      (settings->video_out_type == DVI && settings->video_out_mode > VIDEO_MODE_DVI_MAX) || // DVI mode supports resolutions up to VIDEO_MODE_DVI_MAX
+      (settings->video_out_type == DVI && settings->video_out_mode > VIDEO_MODE_DVI_MAX && settings->video_out_mode != MODE_720x576_48Hz) || // DVI mode supports resolutions up to VIDEO_MODE_DVI_MAX + MODE_720x576_48Hz
+      (settings->video_out_type == VGA && settings->video_out_mode == MODE_720x576_48Hz) ||                                                  // DVI-only mode
       settings->video_out_mode < VIDEO_OUT_MODE_MIN)
     settings->video_out_mode = VIDEO_OUT_MODE_DEF;
 

@@ -239,7 +239,8 @@ typedef enum video_out_mode_t
   MODE_1024x768_60Hz_d4,
   MODE_1280x1024_60Hz_d3,
   MODE_1280x1024_60Hz_d4,
-  VIDEO_MODE_MAX = MODE_1280x1024_60Hz_d4,
+  MODE_720x576_48Hz, // DVI only; appended so saved mode indices stay valid
+  VIDEO_MODE_MAX = MODE_720x576_48Hz,
 } video_out_mode_t;
 
 typedef enum cap_sync_mode_t

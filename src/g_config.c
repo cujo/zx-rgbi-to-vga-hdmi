@@ -34,6 +34,28 @@ video_mode_t mode_720x576_50Hz = {
     .div = 2,
 };
 
+// 576p at the Pentagon frame rate: 31250 / 640 = 48.828125 Hz (320 input
+// lines x 64 us, one input line = two output lines). Free-running with
+// constant timing — use with triple buffering to avoid tearing; the residual
+// crystal offset costs one repeated/skipped frame every few minutes. The 15
+// extra lines go to the front porch, so the picture position is unchanged.
+video_mode_t mode_720x576_48Hz = {
+    .sys_freq = 270000,
+    .pixel_freq = 27000000.0,
+    .h_visible_area = 720,
+    .v_visible_area = 576,
+    .whole_line = 864,
+    .whole_frame = 640,
+    .h_front_porch = 12,
+    .h_sync_pulse = 64,
+    .h_back_porch = 68,
+    .v_front_porch = 20,
+    .v_sync_pulse = 5,
+    .v_back_porch = 39,
+    .sync_polarity = 0b11000000, // negative
+    .div = 2,
+};
+
 video_mode_t mode_800x600_60Hz = {
     .sys_freq = 240000,
     .pixel_freq = 40000000.0,
@@ -127,6 +149,7 @@ video_mode_t *video_modes[VIDEO_MODE_MAX + 1] = {
     [MODE_1024x768_60Hz_d4] = &mode_1024x768_60Hz_d4,
     [MODE_1280x1024_60Hz_d3] = &mode_1280x1024_60Hz_d3,
     [MODE_1280x1024_60Hz_d4] = &mode_1280x1024_60Hz_d4,
+    [MODE_720x576_48Hz] = &mode_720x576_48Hz,
 };
 
 uint8_t g_v_buf[V_BUF_SZ * 3];
