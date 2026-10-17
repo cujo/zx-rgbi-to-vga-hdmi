@@ -89,26 +89,12 @@ void print_video_out_menu()
 {
     printf("\n      * Video resolution *\n\n");
 
-    printf("  1    640x480 @60Hz (div 2)\n");
+    bool pentagon = video_mode_pentagon(settings.video_out_mode);
 
-    switch (settings.video_out_type)
-    {
-    case DVI:
-        printf("  2    720x576 @50Hz (div 2)\n");
-        break;
+    for (int i = 0; i < video_mode_count(settings.video_out_type); i++)
+        printf("  %d   %s\n", i + 1, video_mode_name(video_mode_select(settings.video_out_type, i, pentagon)));
 
-    case VGA:
-        printf("  2    800x600 @60Hz (div 2)\n");
-        printf("  3   1024x768 @60Hz (div 3)\n");
-        printf("  4   1024x768 @60Hz (div 4)\n");
-        printf("  5  1280x1024 @60Hz (div 3)\n");
-        printf("  6  1280x1024 @60Hz (div 4)\n");
-        break;
-
-    default:
-        break;
-    }
-
+    printf("\n  r   frame rate: standard / Pentagon (48.8 Hz), now %s\n", pentagon ? "Pentagon" : "standard");
     printf("\n  p   show configuration\n");
     printf("  h   show help (this menu)\n");
     printf("  q   exit to main menu\n\n");
@@ -262,41 +248,7 @@ void print_video_out_type()
 
 void print_video_out_mode()
 {
-    printf("  Video resolution ............ ");
-
-    switch (settings.video_out_mode)
-    {
-    case MODE_640x480_60Hz:
-        printf("640x480 @60Hz\n");
-        break;
-
-    case MODE_720x576_50Hz:
-        printf("720x576 @50Hz\n");
-        break;
-
-    case MODE_800x600_60Hz:
-        printf("800x600 @60Hz\n");
-        break;
-
-    case MODE_1024x768_60Hz_d3:
-        printf("1024x768 @60Hz (div 3)\n");
-        break;
-
-    case MODE_1024x768_60Hz_d4:
-        printf("1024x768 @60Hz (div 4)\n");
-        break;
-
-    case MODE_1280x1024_60Hz_d3:
-        printf("1280x1024 @60Hz (div 3)\n");
-        break;
-
-    case MODE_1280x1024_60Hz_d4:
-        printf("1280x1024 @60Hz (div 4)\n");
-        break;
-
-    default:
-        break;
-    }
+    printf("  Video resolution ............ %s\n", video_mode_name(settings.video_out_mode));
 }
 
 void print_scanlines_mode()
@@ -311,12 +263,12 @@ void print_scanlines_mode()
 
 void print_buffering_mode()
 {
-    printf("  Buffering mode .............. ");
+    printf("  Buffering mode .............. %s", settings.buffering_mode ? "x3" : "x1");
 
-    if (settings.buffering_mode)
-        printf("x3\n");
-    else
-        printf("x1\n");
+    if (buffering_x3() && !settings.buffering_mode)
+        printf(" (x3 at the Pentagon rate)");
+
+    printf("\n");
 }
 
 void print_cap_sync_mode()
@@ -646,53 +598,23 @@ void handle_serial_menu()
                     break;
 
                 case '1':
-                    settings.video_out_mode = MODE_640x480_60Hz;
-                    print_video_out_mode();
-                    break;
-
                 case '2':
-                    if (settings.video_out_type == DVI)
-                        settings.video_out_mode = MODE_720x576_50Hz;
-                    else
-                        settings.video_out_mode = MODE_800x600_60Hz;
-
-                    print_video_out_mode();
-                    break;
-
                 case '3':
-                    if (settings.video_out_type == VGA)
-                    {
-                        settings.video_out_mode = MODE_1024x768_60Hz_d3;
-                        print_video_out_mode();
-                    }
-
-                    break;
-
                 case '4':
-                    if (settings.video_out_type == VGA)
-                    {
-                        settings.video_out_mode = MODE_1024x768_60Hz_d4;
-                        print_video_out_mode();
-                    }
-
-                    break;
-
                 case '5':
-                    if (settings.video_out_type == VGA)
+                case '6':
+                case '7':
+                    if (inchar - '1' < video_mode_count(settings.video_out_type))
                     {
-                        settings.video_out_mode = MODE_1280x1024_60Hz_d3;
+                        settings.video_out_mode = video_mode_select(settings.video_out_type, inchar - '1', video_mode_pentagon(settings.video_out_mode));
                         print_video_out_mode();
                     }
 
                     break;
 
-                case '6':
-                    if (settings.video_out_type == VGA)
-                    {
-                        settings.video_out_mode = MODE_1280x1024_60Hz_d4;
-                        print_video_out_mode();
-                    }
-
+                case 'r': // the same resolution at the other frame rate
+                    settings.video_out_mode = video_mode_select(settings.video_out_type, video_mode_index(settings.video_out_type, settings.video_out_mode), !video_mode_pentagon(settings.video_out_mode));
+                    print_video_out_mode();
                     break;
 
                 default:
@@ -791,7 +713,7 @@ void handle_serial_menu()
                 case 'b':
                     settings.buffering_mode = !settings.buffering_mode;
                     print_buffering_mode();
-                    set_buffering_mode(settings.buffering_mode);
+                    apply_buffering_mode();
                     break;
 
                 default:

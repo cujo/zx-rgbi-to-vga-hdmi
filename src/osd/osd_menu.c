@@ -134,6 +134,28 @@ void osd_menu_init()
     osd_menu.current_menu = MENU_TYPE_MAIN;
 }
 
+// settings.video_out_mode changed from old_mode: restart the output in it (when this output type is running)
+static void osd_apply_video_mode(uint8_t old_mode)
+{
+    if (active_video_output != settings.video_out_type || old_mode == settings.video_out_mode)
+        return;
+
+    stop_video_output();
+    // Update the horizontal and vertical shift values for the new video mode
+    settings.shX = video_modes[settings.video_out_mode]->shX;
+    settings.shY = video_modes[settings.video_out_mode]->shY;
+    start_video_output(active_video_output);
+    // Adjust capture frequency for new system clock
+    set_capture_frequency(settings.frequency);
+}
+
+// the same resolution at the other frame rate (standard / Pentagon); applied on SEL (tuning mode)
+static void osd_toggle_video_rate()
+{
+    int index = video_mode_index(settings.video_out_type, settings.video_out_mode);
+    settings.video_out_mode = video_mode_select(settings.video_out_type, index, !video_mode_pentagon(settings.video_out_mode));
+}
+
 void osd_menu_update()
 {
     if (!osd_state.enabled)
@@ -250,7 +272,7 @@ void osd_menu_update()
         if (osd_menu.current_menu == MENU_TYPE_MAIN)
             max_items = MAIN_ITEM_COUNT - 1;
         else if (osd_menu.current_menu == MENU_TYPE_OUTPUT)
-            max_items = 3; // Output menu: 0-3 (4 items: mode, scanlines, buffering, back)
+            max_items = 4; // Output menu: 0-4 (5 items: mode, rate, scanlines, buffering, back)
         else if (osd_menu.current_menu == MENU_TYPE_CAPTURE)
             max_items = 5; // Capture menu: 0-5 (6 items: freq, mode, divider, sync, mask, back) - divider always shown but dimmed for SELF
         else if (osd_menu.current_menu == MENU_TYPE_IMAGE_ADJUST)
@@ -274,9 +296,12 @@ void osd_menu_update()
         if (osd_button_pressed(0))
         {                          // UP button
             osd_update_activity(); // Reset timeout on user interaction
-            if (osd_menu.current_menu == MENU_TYPE_OUTPUT && osd_menu_state.tuning_mode && osd_menu_state.selected_item == 0)
-            { // Video mode adjustment
-                osd_adjust_video_mode(1);
+            if (osd_menu.current_menu == MENU_TYPE_OUTPUT && osd_menu_state.tuning_mode && osd_menu_state.selected_item < 2)
+            { // Video mode / rate adjustment
+                if (osd_menu_state.selected_item == 0)
+                    osd_adjust_video_mode(1);
+                else
+                    osd_toggle_video_rate();
                 osd_state.needs_redraw = true;
             }
             else if (osd_menu.current_menu == MENU_TYPE_IMAGE_ADJUST && osd_menu_state.tuning_mode && osd_menu_state.selected_item < 3)
@@ -317,9 +342,12 @@ void osd_menu_update()
         if (osd_button_pressed(1))
         {                          // DOWN button
             osd_update_activity(); // Reset timeout on user interaction
-            if (osd_menu.current_menu == MENU_TYPE_OUTPUT && osd_menu_state.tuning_mode && osd_menu_state.selected_item == 0)
-            { // Video mode adjustment
-                osd_adjust_video_mode(-1);
+            if (osd_menu.current_menu == MENU_TYPE_OUTPUT && osd_menu_state.tuning_mode && osd_menu_state.selected_item < 2)
+            { // Video mode / rate adjustment
+                if (osd_menu_state.selected_item == 0)
+                    osd_adjust_video_mode(-1);
+                else
+                    osd_toggle_video_rate();
                 osd_state.needs_redraw = true;
             }
             else if (osd_menu.current_menu == MENU_TYPE_IMAGE_ADJUST && osd_menu_state.tuning_mode && osd_menu_state.selected_item < 3)
@@ -411,28 +439,17 @@ void osd_menu_update()
             }
             else if (osd_menu.current_menu == MENU_TYPE_OUTPUT)
             {                                // Output submenu selection
-                uint8_t back_item_index = 3; // 4 items (mode, scanlines, buffering, back)
+                uint8_t back_item_index = 4; // 5 items (mode, rate, scanlines, buffering, back)
 
                 if (osd_menu_state.selected_item == back_item_index)
                 { // Back to Main
                     menu_changed = osd_menu_go_back();
                 }
-                else if (osd_menu_state.selected_item == 0)
-                { // Video mode selection - enter/exit tuning mode
+                else if (osd_menu_state.selected_item < 2)
+                { // Video mode / rate selection - enter/exit tuning mode
                     if (osd_menu_state.tuning_mode)
-                    { // Exit tuning mode and apply video mode change
-                        // Only restart if mode has changed
-                        if (active_video_output == settings.video_out_type &&
-                            osd_menu_state.original_video_mode != settings.video_out_mode)
-                        {
-                            stop_video_output();
-                            // Update the horizontal and vertical shift values for the new video mode
-                            settings.shX = video_modes[settings.video_out_mode]->shX;
-                            settings.shY = video_modes[settings.video_out_mode]->shY;
-                            start_video_output(active_video_output);
-                            // Adjust capture frequency for new system clock
-                            set_capture_frequency(settings.frequency);
-                        }
+                    { // Exit tuning mode and apply video mode change (restarts only if the mode has changed)
+                        osd_apply_video_mode(osd_menu_state.original_video_mode);
                         osd_menu_state.tuning_mode = false;
                     }
                     else
@@ -442,7 +459,7 @@ void osd_menu_update()
                     }
                     osd_state.needs_redraw = true;
                 }
-                else if (osd_menu_state.selected_item == 1)
+                else if (osd_menu_state.selected_item == 2)
                 { // Scanlines - toggle
                     // Only allow toggle for VGA and when scanlines are supported
                     bool scanlines_supported = false;
@@ -466,12 +483,14 @@ void osd_menu_update()
                         osd_state.needs_redraw = true;
                     }
                 }
-                else if (osd_menu_state.selected_item == 2)
-                { // Buffering - toggle between X1 and X3
-                    settings.buffering_mode = !settings.buffering_mode;
-                    extern void set_buffering_mode(bool);
-                    set_buffering_mode(settings.buffering_mode);
-                    osd_state.needs_redraw = true;
+                else if (osd_menu_state.selected_item == 3)
+                { // Buffering - toggle between X1 and X3 (at the Pentagon rate always X3)
+                    if (!video_mode_pentagon(settings.video_out_mode))
+                    {
+                        settings.buffering_mode = !settings.buffering_mode;
+                        apply_buffering_mode();
+                        osd_state.needs_redraw = true;
+                    }
                 }
             }
             else if (osd_menu.current_menu == MENU_TYPE_CAPTURE)
@@ -759,27 +778,13 @@ static void render_output_menu()
 {
     osd_text_print_centered(OSD_SUBTITLE_ROW, "OUTPUT SETTINGS", OSD_COLOR_SELECTED, OSD_COLOR_BACKGROUND, 0);
 
-    const char *mode_names_dvi[] = {
-        "640X480@60",
-        "720X576@50",
-    };
-    const char *mode_names_vga[] = {
-        "640X480@60",
-        "800X600@60",
-        "1024X768@60 DIV3",
-        "1024X768@60 DIV4",
-        "1280X1024@60 DIV3",
-        "1280X1024@60 DIV4",
-    };
-    const char *current_mode_name = "UNKNOWN";
-
-    for (int i = 0; i < 4; i++)
+    for (int i = 0; i < 5; i++)
     {
         uint8_t row = OSD_MENU_START_ROW + i;
         uint8_t color = OSD_COLOR_TEXT;
         uint8_t fg_color, bg_color;
 
-        if (i == 1)
+        if (i == 2)
         {
             if (settings.video_out_type == DVI)
                 color = OSD_COLOR_DIMMED;
@@ -794,43 +799,25 @@ static void render_output_menu()
             }
         }
 
-        menu_item_colors(i == osd_menu_state.selected_item, i == 0 && osd_menu_state.tuning_mode, color, &fg_color, &bg_color);
+        if (i == 3 && video_mode_pentagon(settings.video_out_mode))
+            color = OSD_COLOR_DIMMED; // always X3 at the Pentagon rate
+
+        menu_item_colors(i == osd_menu_state.selected_item, i < 2 && osd_menu_state.tuning_mode, color, &fg_color, &bg_color);
 
         if (i == 0)
         {
-            if (settings.video_out_type == DVI)
-            {
-                if (settings.video_out_mode == MODE_640x480_60Hz)
-                    current_mode_name = mode_names_dvi[0];
-                else if (settings.video_out_mode == MODE_720x576_50Hz)
-                    current_mode_name = mode_names_dvi[1];
-            }
-            else
-            {
-                if (settings.video_out_mode == MODE_640x480_60Hz)
-                    current_mode_name = mode_names_vga[0];
-                else if (settings.video_out_mode == MODE_800x600_60Hz)
-                    current_mode_name = mode_names_vga[1];
-                else if (settings.video_out_mode == MODE_1024x768_60Hz_d3)
-                    current_mode_name = mode_names_vga[2];
-                else if (settings.video_out_mode == MODE_1024x768_60Hz_d4)
-                    current_mode_name = mode_names_vga[3];
-                else if (settings.video_out_mode == MODE_1280x1024_60Hz_d3)
-                    current_mode_name = mode_names_vga[4];
-                else if (settings.video_out_mode == MODE_1280x1024_60Hz_d4)
-                    current_mode_name = mode_names_vga[5];
-            }
-
-            osd_text_printf(row, 2, fg_color, bg_color, 0, "%-9s %s", "MODE", current_mode_name);
+            osd_text_printf(row, 2, fg_color, bg_color, 0, "%-9s %s", "MODE", video_mode_name(settings.video_out_mode));
         }
         else if (i == 1)
-            osd_text_printf(row, 2, fg_color, bg_color, 0, "%-9s %s", "SCANLINES", settings.scanlines_mode ? "ON" : "OFF");
+            osd_text_printf(row, 2, fg_color, bg_color, 0, "%-9s %s", "RATE", video_mode_pentagon(settings.video_out_mode) ? "PENTAGON" : "STANDARD");
         else if (i == 2)
-            osd_text_printf(row, 2, fg_color, bg_color, 0, "%-9s %s", "BUFFERING", settings.buffering_mode ? "X3" : "X1");
+            osd_text_printf(row, 2, fg_color, bg_color, 0, "%-9s %s", "SCANLINES", settings.scanlines_mode ? "ON" : "OFF");
         else if (i == 3)
+            osd_text_printf(row, 2, fg_color, bg_color, 0, "%-9s %s", "BUFFERING", buffering_x3() ? "X3" : "X1");
+        else if (i == 4)
             osd_text_print(row, 2, "< BACK TO MAIN", fg_color, bg_color, 0);
 
-        if (i == 0 && i == osd_menu_state.selected_item && osd_menu_state.tuning_mode)
+        if (i < 2 && i == osd_menu_state.selected_item && osd_menu_state.tuning_mode)
             osd_text_set_char(row, 1, '>', fg_color, bg_color);
     }
 }
@@ -1225,58 +1212,13 @@ void osd_adjust_capture_parameter(uint8_t param_index, int8_t direction)
     }
 }
 
+// the next / previous resolution of the output (in a loop) at the current rate; applied on SEL (tuning mode)
 void osd_adjust_video_mode(int8_t direction)
 {
-    video_out_mode_t modes_dvi[] = {
-        MODE_640x480_60Hz,
-        MODE_720x576_50Hz,
-    };
-    video_out_mode_t modes_vga[] = {
-        MODE_640x480_60Hz,
-        MODE_800x600_60Hz,
-        MODE_1024x768_60Hz_d3,
-        MODE_1024x768_60Hz_d4,
-        MODE_1280x1024_60Hz_d3,
-        MODE_1280x1024_60Hz_d4,
-    };
-
-    video_out_mode_t *modes;
-    uint8_t mode_count;
-
-    if (settings.video_out_type == DVI)
-    {
-        modes = modes_dvi;
-        mode_count = count_of(modes_dvi);
-    }
-    else
-    {
-        modes = modes_vga;
-        mode_count = count_of(modes_vga);
-    }
-
-    // Find current mode index
-    int8_t current_index = -1;
-    for (uint8_t i = 0; i < mode_count; i++)
-        if (settings.video_out_mode == modes[i])
-        {
-            current_index = i;
-            break;
-        }
-
-    // Default to first mode if current mode not found
-    if (current_index == -1)
-        current_index = 0;
-
-    // Calculate new index with wrapping
-    int8_t new_index = current_index + direction;
-
-    if (new_index < 0)
-        new_index = mode_count - 1; // Wrap to last mode
-    else if (new_index >= mode_count)
-        new_index = 0; // Wrap to first mode
-
-    // Update mode in settings (don't apply yet - wait for SEL press)
-    settings.video_out_mode = modes[new_index];
+    int count = video_mode_count(settings.video_out_type);
+    int index = video_mode_index(settings.video_out_type, settings.video_out_mode);
+    index = ((index < 0 ? 0 : index) + direction + count) % count;
+    settings.video_out_mode = video_mode_select(settings.video_out_type, index, video_mode_pentagon(settings.video_out_mode));
 }
 
 #ifdef MAIN_ITEM_FF_OSD

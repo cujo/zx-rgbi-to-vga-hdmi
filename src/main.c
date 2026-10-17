@@ -71,7 +71,7 @@ void setup()
   settings.video_out_type = detect_video_output_type();
   check_settings(&settings);
 #endif
-  set_buffering_mode(settings.buffering_mode);
+  apply_buffering_mode();
 
   // Initialize LED before video output so WS2812 PIO program claims offset 0 on PIO0
   led_init();

@@ -66,9 +66,7 @@ void check_settings(settings_t *settings)
       settings->video_out_type < VIDEO_OUT_TYPE_MIN)
     settings->video_out_type = VIDEO_OUT_TYPE_DEF;
 
-  if (settings->video_out_mode > VIDEO_OUT_MODE_MAX ||
-      (settings->video_out_type == DVI && settings->video_out_mode > VIDEO_MODE_DVI_MAX) || // DVI mode supports resolutions up to VIDEO_MODE_DVI_MAX
-      settings->video_out_mode < VIDEO_OUT_MODE_MIN)
+  if (video_mode_index(settings->video_out_type, settings->video_out_mode) < 0) // not a mode of this output
     settings->video_out_mode = VIDEO_OUT_MODE_DEF;
 
   if (settings->cap_sync_mode > CAP_SYNC_MODE_MAX ||

@@ -73,8 +73,9 @@ EXIT
 
 ```text
 MODE         [resolution]    - Video output resolution
+RATE         STANDARD/PENTAGON - Frame rate: standard or the Pentagon's 48.8 Hz
 SCANLINES    ON/OFF          - Scanline filter (VGA only, certain modes)
-BUFFERING    X1/X3           - Frame buffering mode
+BUFFERING    X1/X3           - Frame buffering mode (always X3 at the PENTAGON rate)
 < BACK TO MAIN
 ```
 
@@ -85,10 +86,20 @@ BUFFERING    X1/X3           - Frame buffering mode
 - Press SEL again to apply and exit tuning mode
 - Only restarts video if resolution actually changed
 
-**Available Modes:**
+**RATE Setting:**
 
-- **DVI:** 640×480@60Hz, 720×576@50Hz
-- **VGA:** 640×480@60Hz, 800×600@60Hz, 1024×768@60Hz, 1280×1024@60Hz (DIV3/DIV4)
+- The frame rate of the resolution: STANDARD, or PENTAGON (48.8 Hz, the Pentagon frame rate, see
+  [VGA Timings](VGA_TIMINGS.md))
+- Press SEL to enter tuning mode, UP/DOWN to switch the rate (MODE shows the result), SEL again to apply, as with
+  MODE
+- At 48.8 Hz BUFFERING is X3 (dimmed); the setting is kept for the standard rate
+
+**Available Resolutions (each at the standard rate and at 48.8 Hz):**
+
+- **DVI:** 640×480 (60Hz), 720×576 (50Hz)
+- **VGA:** 640×480 (60Hz), 720×576 (50Hz), 800×600, 1024×768 (DIV3/DIV4), 1280×1024 (DIV3/DIV4) (60Hz)
+- If a VGA monitor shows 720×576 as 800×600 (broken geometry), use 800×600; at 48.8 Hz the same can happen
+  to 640×480
 
 ### CAPTURE SETTINGS
 

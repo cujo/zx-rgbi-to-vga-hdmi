@@ -242,7 +242,15 @@ typedef enum video_out_mode_t
   MODE_1024x768_60Hz_d4,
   MODE_1280x1024_60Hz_d3,
   MODE_1280x1024_60Hz_d4,
-  VIDEO_MODE_MAX = MODE_1280x1024_60Hz_d4,
+  // modes at the Pentagon frame rate (48.828125 Hz), appended so saved mode indices stay valid
+  MODE_720x576_48Hz,      // DVI and VGA
+  MODE_1280x1024_48Hz_d3, // VGA
+  MODE_640x480_48Hz,      // DVI and VGA
+  MODE_1280x1024_48Hz_d4, // VGA
+  MODE_800x600_48Hz,      // VGA
+  MODE_1024x768_48Hz_d3,  // VGA
+  MODE_1024x768_48Hz_d4,  // VGA
+  VIDEO_MODE_MAX = MODE_1024x768_48Hz_d4,
 } video_out_mode_t;
 
 #define VIDEO_MODE_DVI_MAX MODE_720x576_50Hz
@@ -337,6 +345,14 @@ typedef struct video_mode_t
 } video_mode_t;
 
 extern video_mode_t *video_modes[VIDEO_MODE_MAX + 1];
+
+// The modes of an output are pairs {standard rate, Pentagon rate (48.8 Hz)} in menu order; the menus pick the
+// resolution (pair index) and the rate separately. A mode's rate follows from the mode, no setting holds it.
+int video_mode_count(video_out_type_t type);                                // pairs of the output
+uint8_t video_mode_select(video_out_type_t type, int index, bool pentagon); // the mode of a pair
+int video_mode_index(video_out_type_t type, uint8_t mode);                  // its pair, -1 if not of this output
+bool video_mode_pentagon(uint8_t mode);                                     // a Pentagon rate mode
+const char *video_mode_name(uint8_t mode);                                  // OSD name, e.g. "640X480@48.8"
 
 extern uint8_t g_v_buf[];
 

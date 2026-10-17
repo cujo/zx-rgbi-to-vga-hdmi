@@ -46,7 +46,7 @@ Video does not slow down: the capture and DVI/VGA interrupt handlers run from RA
 ### Software
 
 - **Video Output:**
-  - VGA output with selectable resolutions: 640×480 @60Hz, 800×600 @60Hz, 1024×768 @60Hz, 1280×1024 @60Hz.
+  - VGA output with selectable resolutions: 640×480 @60Hz, 720×576 @50Hz, 800×600 @60Hz, 1024×768 @60Hz, 1280×1024 @60Hz.
   - HDMI (DVI) resolutions: 640×480 @60Hz and 720×576 @50Hz.
   - Optional scanline effect on the VGA output at higher resolutions for a retro look.
   - "NO SIGNAL" message when no input is detected.

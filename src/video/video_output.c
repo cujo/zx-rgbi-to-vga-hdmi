@@ -98,9 +98,22 @@ void set_video_mode_params(video_mode_t v_mode)
     v_margin = 0;
 }
 
+// the buffering in effect: X3 at the Pentagon rate (the output and capture rates are nearly equal, so with X1 a
+// tearing line would sit at one screen position), else the BUFFERING setting, which is kept for the standard rate
+bool buffering_x3()
+{
+  return settings.buffering_mode || video_mode_pentagon(settings.video_out_mode);
+}
+
+void apply_buffering_mode()
+{
+  set_buffering_mode(buffering_x3());
+}
+
 void start_video_output(video_out_type_t output_type)
 {
   active_video_output = output_type;
+  apply_buffering_mode(); // the mode may have changed the rate
 
   set_video_mode_params(*(video_modes[settings.video_out_mode]));
 
