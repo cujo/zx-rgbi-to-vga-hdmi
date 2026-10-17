@@ -112,9 +112,8 @@ void print_video_out_menu()
         Serial.println("  4   1024x768 @60Hz (div 4)");
         Serial.println("  5  1280x1024 @60Hz (div 3)");
         Serial.println("  6  1280x1024 @60Hz (div 4)");
-        Serial.println("  7    800x600 @48.8Hz (div 2, Pentagon, experimental)");
-        Serial.println("  8   1024x768 @48.8Hz (div 3, Pentagon, experimental)");
-        Serial.println("  9  1280x1024 @48.8Hz (div 3, Pentagon, experimental)");
+        Serial.println("  7  1280x1024 @48.8Hz (div 3, Pentagon, experimental)");
+        Serial.println("  8    720x576 @48.8Hz (div 2, Pentagon, experimental)");
         break;
 
     default:
@@ -288,14 +287,6 @@ void print_video_out_mode()
 
     case MODE_720x576_48Hz:
         Serial.println("720x576 @48.8Hz");
-        break;
-
-    case MODE_800x600_48Hz:
-        Serial.println("800x600 @48.8Hz");
-        break;
-
-    case MODE_1024x768_48Hz_d3:
-        Serial.println("1024x768 @48.8Hz (div 3)");
         break;
 
     case MODE_1280x1024_48Hz_d3:
@@ -723,7 +714,7 @@ void handle_serial_menu()
                 case '7':
                     if (settings.video_out_type == VGA)
                     {
-                        settings.video_out_mode = MODE_800x600_48Hz;
+                        settings.video_out_mode = MODE_1280x1024_48Hz_d3;
                         print_video_out_mode();
                     }
 
@@ -732,16 +723,7 @@ void handle_serial_menu()
                 case '8':
                     if (settings.video_out_type == VGA)
                     {
-                        settings.video_out_mode = MODE_1024x768_48Hz_d3;
-                        print_video_out_mode();
-                    }
-
-                    break;
-
-                case '9':
-                    if (settings.video_out_type == VGA)
-                    {
-                        settings.video_out_mode = MODE_1280x1024_48Hz_d3;
+                        settings.video_out_mode = MODE_720x576_48Hz;
                         print_video_out_mode();
                     }
 

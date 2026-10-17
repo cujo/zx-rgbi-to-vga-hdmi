@@ -239,13 +239,11 @@ typedef enum video_out_mode_t
   MODE_1024x768_60Hz_d4,
   MODE_1280x1024_60Hz_d3,
   MODE_1280x1024_60Hz_d4,
-  MODE_720x576_48Hz, // DVI only; appended so saved mode indices stay valid
-  // VGA modes at the Pentagon frame rate (48.828125 Hz), EXPERIMENTAL:
-  // same pixel clocks as the @60 variants, extended blanking so that
+  MODE_720x576_48Hz, // DVI and VGA; appended so saved mode indices stay valid
+  // VGA mode at the Pentagon frame rate (48.828125 Hz), EXPERIMENTAL:
+  // same pixel clock as the @60 variant, extended blanking so that
   // whole_line x whole_frame = pixel_freq x 0.02048 s exactly.
   // Appended after the DVI mode so saved mode indices stay valid.
-  MODE_800x600_48Hz,
-  MODE_1024x768_48Hz_d3,
   MODE_1280x1024_48Hz_d3,
   VIDEO_MODE_MAX = MODE_1280x1024_48Hz_d3,
 } video_out_mode_t;
