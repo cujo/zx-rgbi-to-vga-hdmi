@@ -768,6 +768,9 @@ static void render_output_menu()
         "1024X768@60 DIV4",
         "1280X1024@60 DIV3",
         "1280X1024@60 DIV4",
+        "800X600@48.8",
+        "1024X768@48.8 D3",
+        "1280X1024@48.8 D3",
     };
     const char *current_mode_name = "UNKNOWN";
 
@@ -819,6 +822,12 @@ static void render_output_menu()
                     current_mode_name = mode_names_vga[4];
                 else if (settings.video_out_mode == MODE_1280x1024_60Hz_d4)
                     current_mode_name = mode_names_vga[5];
+                else if (settings.video_out_mode == MODE_800x600_48Hz)
+                    current_mode_name = mode_names_vga[6];
+                else if (settings.video_out_mode == MODE_1024x768_48Hz_d3)
+                    current_mode_name = mode_names_vga[7];
+                else if (settings.video_out_mode == MODE_1280x1024_48Hz_d3)
+                    current_mode_name = mode_names_vga[8];
             }
 
             osd_text_printf(row, 2, fg_color, bg_color, 0, "%-9s %s", "MODE", current_mode_name);
@@ -1239,6 +1248,9 @@ void osd_adjust_video_mode(int8_t direction)
         MODE_1024x768_60Hz_d4,
         MODE_1280x1024_60Hz_d3,
         MODE_1280x1024_60Hz_d4,
+        MODE_800x600_48Hz,
+        MODE_1024x768_48Hz_d3,
+        MODE_1280x1024_48Hz_d3,
     };
 
     video_out_mode_t *modes;

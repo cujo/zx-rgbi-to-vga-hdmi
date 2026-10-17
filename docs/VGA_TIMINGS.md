@@ -76,3 +76,28 @@ few minutes.
   slowly instead of flickering past. X3 removes it at the cost of up to
   two frames of latency. This is a recommendation, not enforced — X1
   remains selectable.
+
+## Experimental VGA Modes at the Pentagon Frame Rate (48.828125 Hz)
+
+Same idea as the DVI @48.8 mode, applied to the VGA output: pixel clocks
+match the @60 variants, blanking is extended so that
+`whole_line x whole_frame = pixel_freq x 20.48 ms` exactly. The extra
+blanking goes into the front porches; sync widths and back porches match
+the @60 variants, so the picture position is unchanged.
+
+| Mode                | Pixel clock | Whole line | Whole frame | H rate      | V rate       |
+|---------------------|------------:|-----------:|------------:|------------:|-------------:|
+| 800 x 600 @48.8     | 40.0 MHz    | 1024       | 800         | 39.0625 kHz | 48.828125 Hz |
+| 1024 x 768 @48.8 d3 | 65.0 MHz    | 1300       | 1024        | 50.0 kHz    | 48.828125 Hz |
+| 1280 x 1024 @48.8 d3| 108.0 MHz   | 1728       | 1280        | 62.5 kHz    | 48.828125 Hz |
+
+**Status: experimental / untested on hardware.** Many LCD scalers refuse
+vertical rates below 50-56 Hz on the analog VGA input even when the same
+panel accepts 48.8 Hz over HDMI — test with your display before relying
+on these modes. A 640 x 480 variant is deliberately omitted: it would
+require a 28.1 kHz line rate, below the minimum of typical VGA inputs.
+
+On a native 1280 x 1024 panel the 1280 x 1024 @48.8 d3 mode is the
+quality ceiling for this converter: Pentagon-native frame rate AND
+integer 3x vertical scaling (320 x 3 = 960 lines) on the native pixel
+grid, with no scaler resampling. BUFFERING X3 recommended, as above.
