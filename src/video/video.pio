@@ -31,7 +31,11 @@ l_sync:
 
 ; ── RGB capture, external clock (active high) ─────────────────────
 ; Samples 8 pins synchronised to external CAP_F_PIN clock.
-; Supports configurable clock divider (1–32 CAP_F_PIN edges per sample).
+; Clock divider: ONE sample per `div` CAP_F_PIN cycles (div-1 cycles are
+; skipped first, then the pixel is sampled on the next falling edge), so a
+; 14 MHz master clock with div = 2 yields the 7 MHz pixel rate.
+; settings.frequency must be set to the EFFECTIVE sample rate (F / div) —
+; the frame handler derives its sync-pulse thresholds from it.
 ; wait/set instructions are patched at runtime with actual pin/divider.
 ; Two halves: active region (jmp pin → divider1) and sync region
 ; (jmp pin → address 0 to re-check sync, then divider2 loop).
@@ -42,26 +46,38 @@ l_sync:
 PUBLIC delay:
     nop                            ; patched at runtime: capture delay
 PUBLIC divider1:
-    set     x, 0                   ; patched at runtime: ext clock divider
-l_ext1:
-PUBLIC wait_f_low_1:
+    set     x, 0                   ; patched at runtime: div-1 cycles to skip
+l_skip1:
+    jmp     !x, l_smp1             ; no cycles left to skip — sample
+PUBLIC wait_f_low_1a:
+    wait    0 gpio, CAP_F_PIN          ; patched at runtime
+PUBLIC wait_f_high_1a:
+    wait    1 gpio, CAP_F_PIN          ; patched at runtime
+    jmp     x--, l_skip1           ; skip loop
+l_smp1:
+PUBLIC wait_f_low_1b:
     wait    0 gpio, CAP_F_PIN          ; patched at runtime
     in      pins, 8                ; sample pixel on F falling edge
-PUBLIC wait_f_high_1:
+PUBLIC wait_f_high_1b:
     wait    1 gpio, CAP_F_PIN          ; patched at runtime
-    jmp     x--, l_ext1            ; divider loop
     push    iffull block
     jmp     pin, divider1          ; H-sync inactive — continue capture
 PUBLIC divider2:
-    set     x, 0                   ; patched at runtime: ext clock divider
-l_ext2:
-PUBLIC wait_f_low_2:
+    set     x, 0                   ; patched at runtime: div-1 cycles to skip
+l_skip2:
+    jmp     !x, l_smp2             ; no cycles left to skip — sample
+PUBLIC wait_f_low_2a:
+    wait    0 gpio, CAP_F_PIN          ; patched at runtime
+PUBLIC wait_f_high_2a:
+    wait    1 gpio, CAP_F_PIN          ; patched at runtime
+    jmp     x--, l_skip2           ; skip loop
+l_smp2:
+PUBLIC wait_f_low_2b:
     wait    0 gpio, CAP_F_PIN          ; patched at runtime
     jmp     pin, 0                 ; H-sync ended — restart from delay
     in      pins, 8                ; sample during sync
-PUBLIC wait_f_high_2:
+PUBLIC wait_f_high_2b:
     wait    1 gpio, CAP_F_PIN          ; patched at runtime
-    jmp     x--, l_ext2            ; divider loop
     push    iffull block
     jmp     divider2               ; still in sync — continue
 .wrap
