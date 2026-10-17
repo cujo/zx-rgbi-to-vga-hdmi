@@ -36,9 +36,12 @@ video_mode_t mode_720x576_50Hz = {
 
 // 576p at the Pentagon frame rate: 31250 / 640 = 48.828125 Hz (320 input
 // lines x 64 us, one input line = two output lines). Free-running with
-// constant timing — use with triple buffering to avoid tearing; the residual
-// crystal offset costs one repeated/skipped frame every few minutes. The 15
-// extra lines go to the front porch, so the picture position is unchanged.
+// constant timing; the residual crystal offset costs one repeated/skipped
+// frame every few minutes. The 15 extra lines go to the front porch, so the
+// picture position is unchanged. BUFFERING X3 is recommended (not enforced):
+// with nearly matched rates the buffer phase is quasi-static, so in X1 a
+// tearing line sits at one screen position instead of flickering past.
+// See docs/VGA_TIMINGS.md for details.
 video_mode_t mode_720x576_48Hz = {
     .sys_freq = 270000,
     .pixel_freq = 27000000.0,
