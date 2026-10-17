@@ -28,26 +28,51 @@
 
 ## Extended Timing Parameters for Supported DVI Video Modes
 
-| Mode                                  | 640 x 480     | 720 x 576     |
-|---------------------------------------|--------------:|--------------:|
-| **Screen refresh rate**               | 60 Hz         | 50 Hz         |
-| **Vertical refresh**                  | 31.469 kHz    | 31.25 kHz     |
-| **Pixel frequency**                   | 25.175 MHz    | 27.0 MHz      |
-|                                       |               |               |
-| **Horizontal timing (line)**          |               |               |
-| **Polarity of horizontal sync pulse** | negative      | negative      |
-| **Scanline part**                     | **Pixels**    | **Pixels**    |
-| **Visible area**                      | 640           | 720           |
-| **Front porch**                       | 16            | 12            |
-| **Sync pulse**                        | 96            | 64            |
-| **Back porch**                        | 48            | 68            |
-| **Whole line**                        | 800           | 864           |
-|                                       |               |               |
-| **Vertical timing (frame)**           |               |               |
-| **Polarity of vertical sync pulse**   | negative      | negative      |
-| **Frame part**                        | **Lines**     | **Lines**     |
-| **Visible area**                      | 480           | 576           |
-| **Front porch**                       | 10            | 5             |
-| **Sync pulse**                        | 2             | 5             |
-| **Back porch**                        | 33            | 39            |
-| **Whole frame**                       | 525           | 625           |
+| Mode                                  | 640 x 480     | 720 x 576 @50 | 720 x 576 @48.8 |
+|---------------------------------------|--------------:|--------------:|----------------:|
+| **Screen refresh rate**               | 60 Hz         | 50 Hz         | 48.828125 Hz    |
+| **Vertical refresh**                  | 31.469 kHz    | 31.25 kHz     | 31.25 kHz       |
+| **Pixel frequency**                   | 25.175 MHz    | 27.0 MHz      | 27.0 MHz        |
+|                                       |               |               |                 |
+| **Horizontal timing (line)**          |               |               |                 |
+| **Polarity of horizontal sync pulse** | negative      | negative      | negative        |
+| **Scanline part**                     | **Pixels**    | **Pixels**    | **Pixels**      |
+| **Visible area**                      | 640           | 720           | 720             |
+| **Front porch**                       | 16            | 12            | 12              |
+| **Sync pulse**                        | 96            | 64            | 64              |
+| **Back porch**                        | 48            | 68            | 68              |
+| **Whole line**                        | 800           | 864           | 864             |
+|                                       |               |               |                 |
+| **Vertical timing (frame)**           |               |               |                 |
+| **Polarity of vertical sync pulse**   | negative      | negative      | negative        |
+| **Frame part**                        | **Lines**     | **Lines**     | **Lines**       |
+| **Visible area**                      | 480           | 576           | 576             |
+| **Front porch**                       | 10            | 5             | 20              |
+| **Sync pulse**                        | 2             | 5             | 5               |
+| **Back porch**                        | 33            | 39            | 39              |
+| **Whole frame**                       | 525           | 625           | 640             |
+
+### Notes on 720 x 576 @48.8 (Pentagon mode)
+
+This mode targets the Pentagon ZX Spectrum clone, whose frame is
+320 lines x 64 us = 20.48 ms (48.828125 Hz). The standard 576p50 output
+never matches that rate, so about once a second a captured frame is
+repeated or dropped — visible as a periodic stutter on smooth scrolling.
+
+The @48.8 mode keeps the 576p50 pixel clock and line timing but extends
+the frame to 640 lines: 31250 / 640 = 48.828125 Hz, exactly the Pentagon
+frame rate (one input line = two output lines). The 15 extra lines go
+into the vertical front porch, so the picture position is identical to
+576p50. The output is free-running with constant timing; the residual
+crystal tolerance (tens of ppm) costs one repeated or skipped frame every
+few minutes.
+
+- The display (or HDMI-to-VGA converter) must accept a 48.8 Hz vertical
+  rate. If there is no picture in this mode, fall back to 720 x 576 @50
+  or 640 x 480 @60.
+- **BUFFERING X3 is recommended** in this mode. With nearly matched input
+  and output rates the buffer read/write phase is quasi-static: in X1 a
+  tearing line, when it occurs, stays at one screen position and creeps
+  slowly instead of flickering past. X3 removes it at the cost of up to
+  two frames of latency. This is a recommendation, not enforced — X1
+  remains selectable.
