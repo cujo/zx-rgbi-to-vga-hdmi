@@ -104,9 +104,8 @@ void print_video_out_menu()
         printf("  4   1024x768 @60Hz (div 4)\n");
         printf("  5  1280x1024 @60Hz (div 3)\n");
         printf("  6  1280x1024 @60Hz (div 4)\n");
-        printf("  7    800x600 @48.8Hz (div 2, Pentagon, experimental)\n");
-        printf("  8   1024x768 @48.8Hz (div 3, Pentagon, experimental)\n");
-        printf("  9  1280x1024 @48.8Hz (div 3, Pentagon, experimental)\n");
+        printf("  7  1280x1024 @48.8Hz (div 3, Pentagon, experimental)\n");
+        printf("  8    720x576 @48.8Hz (div 2, Pentagon, experimental)\n");
         break;
 
     default:
@@ -280,14 +279,6 @@ void print_video_out_mode()
 
     case MODE_720x576_48Hz:
         printf("720x576 @48.8Hz\n");
-        break;
-
-    case MODE_800x600_48Hz:
-        printf("800x600 @48.8Hz\n");
-        break;
-
-    case MODE_1024x768_48Hz_d3:
-        printf("1024x768 @48.8Hz (div 3)\n");
         break;
 
     case MODE_1280x1024_48Hz_d3:
@@ -715,7 +706,7 @@ void handle_serial_menu()
                 case '7':
                     if (settings.video_out_type == VGA)
                     {
-                        settings.video_out_mode = MODE_800x600_48Hz;
+                        settings.video_out_mode = MODE_1280x1024_48Hz_d3;
                         print_video_out_mode();
                     }
 
@@ -724,16 +715,7 @@ void handle_serial_menu()
                 case '8':
                     if (settings.video_out_type == VGA)
                     {
-                        settings.video_out_mode = MODE_1024x768_48Hz_d3;
-                        print_video_out_mode();
-                    }
-
-                    break;
-
-                case '9':
-                    if (settings.video_out_type == VGA)
-                    {
-                        settings.video_out_mode = MODE_1280x1024_48Hz_d3;
+                        settings.video_out_mode = MODE_720x576_48Hz;
                         print_video_out_mode();
                     }
 

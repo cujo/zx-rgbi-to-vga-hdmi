@@ -41,7 +41,7 @@ video_mode_t mode_720x576_50Hz = {
 // picture position is unchanged. BUFFERING X3 is recommended (not enforced):
 // with nearly matched rates the buffer phase is quasi-static, so in X1 a
 // tearing line sits at one screen position instead of flickering past.
-// See docs/VGA_TIMINGS.md for details.
+// Available on DVI and (experimental) VGA. See docs/VGA_TIMINGS.md.
 video_mode_t mode_720x576_48Hz = {
     .sys_freq = 270000,
     .pixel_freq = 27000000.0,
@@ -144,50 +144,14 @@ video_mode_t mode_1280x1024_60Hz_d4 = {
     .div = 4,
 };
 
-// ── EXPERIMENTAL: VGA modes at the Pentagon frame rate ──────────────────
+// ── EXPERIMENTAL: VGA mode at the Pentagon frame rate ───────────────────
 // whole_line x whole_frame = pixel_freq x 20.48 ms exactly, so the output
 // frame rate is 48.828125 Hz = the Pentagon frame rate (320 lines x 64 us):
-// no repeated/dropped frames beyond crystal tolerance. Pixel clocks, sync
-// widths and back porches match the @60 variants (picture position kept);
+// no repeated/dropped frames beyond crystal tolerance. Pixel clock, sync
+// widths and back porches match the @60 variant (picture position kept);
 // the extra blanking goes into the FRONT porches. The display's VGA input
 // must accept a 48.8 Hz vertical rate — many LCD scalers refuse < 50-56 Hz
 // on VGA, hence experimental. BUFFERING X3 recommended (see @48.8 DVI mode).
-
-// 40 MHz, 1024 x 800 total, h 39.0625 kHz, v 48.828125 Hz
-video_mode_t mode_800x600_48Hz = {
-    .sys_freq = 240000,
-    .pixel_freq = 40000000.0,
-    .h_visible_area = 800,
-    .v_visible_area = 600,
-    .whole_line = 1024,
-    .whole_frame = 800,
-    .h_front_porch = 40,
-    .h_sync_pulse = 128,
-    .h_back_porch = 56,
-    .v_front_porch = 173,
-    .v_sync_pulse = 4,
-    .v_back_porch = 23,
-    .sync_polarity = 0b00000000, // positive
-    .div = 2,
-};
-
-// 65 MHz, 1300 x 1024 total, h 50.0 kHz, v 48.828125 Hz
-video_mode_t mode_1024x768_48Hz_d3 = {
-    .sys_freq = 260000,
-    .pixel_freq = 65000000.0,
-    .h_visible_area = 1020, // 1024
-    .v_visible_area = 768,
-    .whole_line = 1300,
-    .whole_frame = 1024,
-    .h_front_porch = 24,
-    .h_sync_pulse = 135, // 136
-    .h_back_porch = 121,
-    .v_front_porch = 221,
-    .v_sync_pulse = 6,
-    .v_back_porch = 29,
-    .sync_polarity = 0b11000000, // negative
-    .div = 3,
-};
 
 // 108 MHz, 1728 x 1280 total, h 62.5 kHz, v 48.828125 Hz.
 // On a native 1280x1024 panel this gives the Pentagon frame 1:1 in time
@@ -218,8 +182,6 @@ video_mode_t *video_modes[VIDEO_MODE_MAX + 1] = {
     [MODE_1280x1024_60Hz_d3] = &mode_1280x1024_60Hz_d3,
     [MODE_1280x1024_60Hz_d4] = &mode_1280x1024_60Hz_d4,
     [MODE_720x576_48Hz] = &mode_720x576_48Hz,
-    [MODE_800x600_48Hz] = &mode_800x600_48Hz,
-    [MODE_1024x768_48Hz_d3] = &mode_1024x768_48Hz_d3,
     [MODE_1280x1024_48Hz_d3] = &mode_1280x1024_48Hz_d3,
 };
 
