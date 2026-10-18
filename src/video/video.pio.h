@@ -63,7 +63,7 @@ static inline pio_sm_config pio_capture_0_program_get_default_config(uint offset
 // ------------- //
 
 #define pio_capture_1_wrap_target 0
-#define pio_capture_1_wrap 21
+#define pio_capture_1_wrap 20
 #define pio_capture_1_pio_version 0
 
 #define pio_capture_1_offset_delay 0u
@@ -73,10 +73,9 @@ static inline pio_sm_config pio_capture_0_program_get_default_config(uint offset
 #define pio_capture_1_offset_wait_f_low_1b 6u
 #define pio_capture_1_offset_wait_f_high_1b 8u
 #define pio_capture_1_offset_divider2 11u
-#define pio_capture_1_offset_wait_f_low_2a 13u
-#define pio_capture_1_offset_wait_f_high_2a 14u
-#define pio_capture_1_offset_wait_f_low_2b 16u
-#define pio_capture_1_offset_wait_f_high_2b 19u
+#define pio_capture_1_offset_wait_f_low_2 12u
+#define pio_capture_1_offset_wait_f_high_2a 15u
+#define pio_capture_1_offset_wait_f_high_2b 18u
 
 static const uint16_t pio_capture_1_program_instructions[] = {
             //     .wrap_target
@@ -92,23 +91,22 @@ static const uint16_t pio_capture_1_program_instructions[] = {
     0x8060, //  9: push   iffull block
     0x00c1, // 10: jmp    pin, 1
     0xe020, // 11: set    x, 0
-    0x0030, // 12: jmp    !x, 16
-    0x2006, // 13: wait   0 gpio, 6
-    0x2086, // 14: wait   1 gpio, 6
-    0x004c, // 15: jmp    x--, 12
-    0x2006, // 16: wait   0 gpio, 6
-    0x00c0, // 17: jmp    pin, 0
-    0x4008, // 18: in     pins, 8
-    0x2086, // 19: wait   1 gpio, 6
-    0x8060, // 20: push   iffull block
-    0x000b, // 21: jmp    11
+    0x2006, // 12: wait   0 gpio, 6
+    0x00c0, // 13: jmp    pin, 0
+    0x0031, // 14: jmp    !x, 17
+    0x2086, // 15: wait   1 gpio, 6
+    0x004c, // 16: jmp    x--, 12
+    0x4008, // 17: in     pins, 8
+    0x2086, // 18: wait   1 gpio, 6
+    0x8060, // 19: push   iffull block
+    0x000b, // 20: jmp    11
             //     .wrap
 };
 
 #if !PICO_NO_HARDWARE
 static const struct pio_program pio_capture_1_program = {
     .instructions = pio_capture_1_program_instructions,
-    .length = 22,
+    .length = 21,
     .origin = -1,
     .pio_version = pio_capture_1_pio_version,
 #if PICO_PIO_VERSION > 0
