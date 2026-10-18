@@ -39,6 +39,9 @@ l_sync:
 ; wait/set instructions are patched at runtime with actual pin/divider.
 ; Two halves: active region (jmp pin → divider1) and sync region
 ; (jmp pin → address 0 to re-check sync, then divider2 loop).
+; The end of H-sync is checked on every F falling edge, so with div > 1 the
+; sampling phase within the pixel (which of the div edges is sampled) is set
+; by `delay` alone and is the same after every reboot.
 
 .program pio_capture_1
 .define CAP_F_PIN 6                ; placeholder — patched at runtime
@@ -64,17 +67,18 @@ PUBLIC wait_f_high_1b:
     jmp     pin, divider1          ; H-sync inactive — continue capture
 PUBLIC divider2:
     set     x, 0                   ; patched at runtime: div-1 cycles to skip
-l_skip2:
-    jmp     !x, l_smp2             ; no cycles left to skip — sample
-PUBLIC wait_f_low_2a:
+l_edge2:
+PUBLIC wait_f_low_2:
     wait    0 gpio, CAP_F_PIN          ; patched at runtime
+    jmp     pin, 0                 ; H-sync ended — restart from delay (checked
+                                   ; on EVERY F edge, so each line re-anchors
+                                   ; to H-sync: sample phase depends only on
+                                   ; `delay`, not on the phase at boot)
+    jmp     !x, l_smp2             ; no cycles left to skip — sample
 PUBLIC wait_f_high_2a:
     wait    1 gpio, CAP_F_PIN          ; patched at runtime
-    jmp     x--, l_skip2           ; skip loop
+    jmp     x--, l_edge2           ; skip loop
 l_smp2:
-PUBLIC wait_f_low_2b:
-    wait    0 gpio, CAP_F_PIN          ; patched at runtime
-    jmp     pin, 0                 ; H-sync ended — restart from delay
     in      pins, 8                ; sample during sync
 PUBLIC wait_f_high_2b:
     wait    1 gpio, CAP_F_PIN          ; patched at runtime

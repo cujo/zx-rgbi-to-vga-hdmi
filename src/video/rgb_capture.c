@@ -300,9 +300,8 @@ void start_capture()
     PIO_CAP->instr_mem[offset + pio_capture_1_offset_wait_f_high_1a] = pio_encode_wait_gpio(true, CAP_F_PIN);
     PIO_CAP->instr_mem[offset + pio_capture_1_offset_wait_f_low_1b] = pio_encode_wait_gpio(false, CAP_F_PIN);
     PIO_CAP->instr_mem[offset + pio_capture_1_offset_wait_f_high_1b] = pio_encode_wait_gpio(true, CAP_F_PIN);
-    PIO_CAP->instr_mem[offset + pio_capture_1_offset_wait_f_low_2a] = pio_encode_wait_gpio(false, CAP_F_PIN);
+    PIO_CAP->instr_mem[offset + pio_capture_1_offset_wait_f_low_2] = pio_encode_wait_gpio(false, CAP_F_PIN);
     PIO_CAP->instr_mem[offset + pio_capture_1_offset_wait_f_high_2a] = pio_encode_wait_gpio(true, CAP_F_PIN);
-    PIO_CAP->instr_mem[offset + pio_capture_1_offset_wait_f_low_2b] = pio_encode_wait_gpio(false, CAP_F_PIN);
     PIO_CAP->instr_mem[offset + pio_capture_1_offset_wait_f_high_2b] = pio_encode_wait_gpio(true, CAP_F_PIN);
   }
 
