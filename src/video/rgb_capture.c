@@ -357,7 +357,8 @@ void start_capture()
       dma_ch1,
       &c1,
       &dma_hw->ch[dma_ch0].write_addr, // write address
-      cap_dma_buf_addr,                // read address (with ring wrapping)
+      &cap_dma_buf_addr[1],            // read address (with ring wrapping): ch0 already
+                                       // writes buffer 0, the first reload is buffer 1
       1,                               // transfer 1 address pointer
       false                            // don't start yet
   );
