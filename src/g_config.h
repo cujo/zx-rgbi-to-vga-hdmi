@@ -248,7 +248,8 @@ typedef enum video_out_mode_t
   // whole_line x whole_frame = pixel_freq x 0.02048 s exactly.
   // Appended after the DVI mode so saved mode indices stay valid.
   MODE_1280x1024_48Hz_d3,
-  VIDEO_MODE_MAX = MODE_1280x1024_48Hz_d3,
+  MODE_640x480_48Hz, // DVI only, Pentagon frame rate; appended so saved mode indices stay valid
+  VIDEO_MODE_MAX = MODE_640x480_48Hz,
 } video_out_mode_t;
 
 #define VIDEO_MODE_DVI_MAX MODE_720x576_50Hz

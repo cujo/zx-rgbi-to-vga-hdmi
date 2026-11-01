@@ -760,6 +760,7 @@ static void render_output_menu()
         "640X480@60",
         "720X576@50",
         "720X576@48.8",
+        "640X480@48.8",
     };
     const char *mode_names_vga[] = {
         "640X480@60",
@@ -806,6 +807,8 @@ static void render_output_menu()
                     current_mode_name = mode_names_dvi[1];
                 else if (settings.video_out_mode == MODE_720x576_48Hz)
                     current_mode_name = mode_names_dvi[2];
+                else if (settings.video_out_mode == MODE_640x480_48Hz)
+                    current_mode_name = mode_names_dvi[3];
             }
             else
             {
@@ -1237,6 +1240,7 @@ void osd_adjust_video_mode(int8_t direction)
         MODE_640x480_60Hz,
         MODE_720x576_50Hz,
         MODE_720x576_48Hz,
+        MODE_640x480_48Hz,
     };
     video_out_mode_t modes_vga[] = {
         MODE_640x480_60Hz,

@@ -17,6 +17,30 @@ video_mode_t mode_640x480_60Hz = {
     .div = 2,
 };
 
+// 480p at the Pentagon frame rate: 25 MHz / 800 = 31.25 kHz line rate,
+// 31250 / 640 = 48.828125 Hz (one input line = two output lines, as in
+// 720x576@48.8). The pixel clock is 25.0 MHz instead of 25.2 MHz so that a
+// whole line takes exactly 32 us: sys_clk 250 MHz (VCO 1500 / 6 / 1), one
+// TMDS bit per sys_clk. Horizontal timing, sync widths and back porches
+// match 640x480@60; the 115 extra lines go to the vertical front porch, so
+// the picture position is unchanged. DVI only. BUFFERING X3 recommended.
+video_mode_t mode_640x480_48Hz = {
+    .sys_freq = 250000,
+    .pixel_freq = 25000000.0,
+    .h_visible_area = 640,
+    .v_visible_area = 480,
+    .whole_line = 800,
+    .whole_frame = 640,
+    .h_front_porch = 16,
+    .h_sync_pulse = 96,
+    .h_back_porch = 48,
+    .v_front_porch = 125,
+    .v_sync_pulse = 2,
+    .v_back_porch = 33,
+    .sync_polarity = 0b11000000, // negative
+    .div = 2,
+};
+
 video_mode_t mode_720x576_50Hz = {
     .sys_freq = 270000,
     .pixel_freq = 27000000.0,
@@ -183,6 +207,7 @@ video_mode_t *video_modes[VIDEO_MODE_MAX + 1] = {
     [MODE_1280x1024_60Hz_d4] = &mode_1280x1024_60Hz_d4,
     [MODE_720x576_48Hz] = &mode_720x576_48Hz,
     [MODE_1280x1024_48Hz_d3] = &mode_1280x1024_48Hz_d3,
+    [MODE_640x480_48Hz] = &mode_640x480_48Hz,
 };
 
 uint8_t g_v_buf[V_BUF_SZ * 3];

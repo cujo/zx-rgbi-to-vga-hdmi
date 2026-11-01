@@ -96,6 +96,7 @@ void print_video_out_menu()
     case DVI:
         printf("  2    720x576 @50Hz (div 2)\n");
         printf("  3    720x576 @48.8Hz (div 2, Pentagon)\n");
+        printf("  4    640x480 @48.8Hz (div 2, Pentagon)\n");
         break;
 
     case VGA:
@@ -279,6 +280,10 @@ void print_video_out_mode()
 
     case MODE_720x576_48Hz:
         printf("720x576 @48.8Hz\n");
+        break;
+
+    case MODE_640x480_48Hz:
+        printf("640x480 @48.8Hz\n");
         break;
 
     case MODE_1280x1024_48Hz_d3:
@@ -677,12 +682,12 @@ void handle_serial_menu()
                     break;
 
                 case '4':
-                    if (settings.video_out_type == VGA)
-                    {
+                    if (settings.video_out_type == DVI)
+                        settings.video_out_mode = MODE_640x480_48Hz;
+                    else
                         settings.video_out_mode = MODE_1024x768_60Hz_d4;
-                        print_video_out_mode();
-                    }
 
+                    print_video_out_mode();
                     break;
 
                 case '5':
