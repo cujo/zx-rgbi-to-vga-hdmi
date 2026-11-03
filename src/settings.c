@@ -15,9 +15,11 @@ extern settings_t settings;
 settings_t default_settings = {
     .video_out_type = VIDEO_OUT_TYPE_DEF,
     .video_out_mode = VIDEO_OUT_MODE_DEF,
-    .scanlines_mode = false,
+    .scanlines_mode = SCANLINES_OFF,
     .buffering_mode = false,
     .cap_sync_mode = CAP_SYNC_MODE_DEF,
+    .crt_options = CRT_OPTIONS(BEAM_WIDTH_TV, NORMAL_LEVEL_205),
+    .grille_mode = GRILLE_OFF,
     .frequency = FREQUENCY_DEF,
     .ext_clk_divider = EXT_CLK_DIVIDER_DEF,
     .delay = DELAY_DEF,
@@ -69,6 +71,15 @@ void check_settings(settings_t *settings)
   if (video_mode_index(settings->video_out_type, settings->video_out_mode) < 0) // not a mode of this output
     settings->video_out_mode = VIDEO_OUT_MODE_DEF;
 
+  if (settings->scanlines_mode > SCANLINES_LEVEL_MAX)
+    settings->scanlines_mode = SCANLINES_OFF;
+
+  settings->crt_options &= 0x0f; // beam width and normal level (both always valid)
+
+  if (GRILLE_LEVEL(settings->grille_mode) >= GRILLE_COUNT || (settings->grille_mode & 0xc0))
+    settings->grille_mode = GRILLE_OFF;
+
+
   if (settings->cap_sync_mode > CAP_SYNC_MODE_MAX ||
       settings->cap_sync_mode < CAP_SYNC_MODE_MIN)
     settings->cap_sync_mode = CAP_SYNC_MODE_DEF;
@@ -112,7 +123,7 @@ void check_settings(settings_t *settings)
   if (settings->pin_inversion_mask & ~PIN_INVERSION_MASK)
   {
     settings->pin_inversion_mask = PIN_INVERSION_MASK_DEF;
-    settings->scanlines_mode = false;
+    settings->scanlines_mode = SCANLINES_OFF;
     settings->buffering_mode = false;
     settings->video_sync_mode = false;
   }

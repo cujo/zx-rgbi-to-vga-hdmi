@@ -42,17 +42,168 @@ extern int16_t h_margin;
 extern int16_t v_visible_area;
 extern int16_t v_margin;
 
-static bool scanlines_mode = false;
+// scanlines_level_t; the gap lines are black at SCANLINES_100, else dimmed (palette_dim)
+static uint8_t scanlines_mode = SCANLINES_OFF;
 
 static uint32_t *v_out_dma_buf[2];
-static uint32_t *v_out_dma_buf_alloc; // single contiguous allocation for both ping-pong buffers
+static uint32_t *v_out_scanline;      // dimmed copy of the current line (gap lines)
+static uint32_t *v_out_dma_buf_alloc; // single contiguous allocation for the ping-pong buffers and v_out_scanline
 static uint32_t *v_out_sync_hblank;   // pre-filled H-blank line (H sync only)
 static uint32_t *v_out_sync_vsync;    // pre-filled V-sync line (VH sync)
 
 // ISR state (file-scope for reset in stop_vga)
 static uint16_t y = 0;
 static uint8_t *scr_buffer = NULL;
+
+// pair palettes: index = byte of 2 packed pixels (low nibble first on screen), value = their 2 output bytes
 static uint16_t palette[256];
+static uint16_t palette_dim[256]; // on scanlines (vga_scanline_level)
+
+// 2-bit DAC value of one channel (0-3) -> its pin bits: R_HIGH etc. is value 3
+#define CH_BITS(v, high) ((uint8_t)((v) * ((high) / 3)))
+
+// the scanline level VGA shows: OFF, 25, 50, 75 or 100%; ADAPT and BEAM (DVI levels) look like 25% on a 2-bit DAC
+static uint8_t vga_scanline_level(uint8_t level)
+{
+  return level == SCANLINES_ADAPTIVE || level == SCANLINES_BEAM ? SCANLINES_25 : level;
+}
+
+// DAC value (0-3) of a lit channel on a scanline: normal colors are 2 on the line, BRIGHT 3. The steps are 0, 9%,
+// 41% and 100% of the light, so 25% darker is one step down (BRIGHT 2/3, normal 1/3), 50% leaves both at 1/3,
+// 75% leaves BRIGHT at 1/3 and normal black; 100% is a black line (the hblank buffer). level 0: the line itself.
+static int dac_value(bool bright, uint8_t level)
+{
+  int v = bright ? 3 : 2;
+
+  switch (level)
+  {
+  case SCANLINES_25:
+    return v - 1;
+  case SCANLINES_50:
+    return 1;
+  case SCANLINES_75:
+    return v - 2;
+  default:
+    return v;
+  }
+}
+
+// one output byte of color c (IRGB) on a scanline of level `level` (0: the line)
+static uint8_t vga_color(int c, uint8_t level)
+{
+  uint8_t ns = 0b00000000 ^ video_mode.sync_polarity; // NO_SYNC
+  int v = dac_value(c & 8, level);
+  uint8_t r = (c & 4) ? CH_BITS(v, R_HIGH) : 0;
+  uint8_t g = (c & 2) ? CH_BITS(v, G_HIGH) : 0;
+  uint8_t b = (c & 1) ? CH_BITS(v, B_HIGH) : 0;
+  return ns | r | g | b;
+}
+
+static void build_palette(uint16_t *pal, uint8_t level)
+{
+  for (int k = 0; k < 256; k++)
+    pal[k] = vga_color(k & 0x0f, level) | ((uint16_t)vga_color(k >> 4, level) << 8);
+}
+
+// one output line from source line scaled_y (and the OSD), colors from pal (palette or palette_dim)
+static void __not_in_flash_func(render_line)(uint16_t *line_buf, uint16_t scaled_y, const uint16_t *pal)
+{
+  uint8_t *scr_line = &scr_buffer[scaled_y * (V_BUF_W / 2)];
+
+  // left margin
+  for (int x = h_margin; x--;)
+    *line_buf++ = pal[0];
+
+#ifdef OSD_ENABLE
+  // main image area with OSD compositing
+  bool osd_active = osd_state.visible && (scaled_y >= osd_mode.start_y && scaled_y < osd_mode.end_y);
+
+  if (osd_active)
+  { // calculate OSD buffer line offset using scaled coordinates (2 pixels per byte)
+    uint8_t *osd_line = &osd_buffer[(scaled_y - osd_mode.start_y) * (osd_mode.width / 2)];
+
+    int x = 0;
+
+    if (!osd_mode.full_width)
+    {
+      for (; (x + 4) <= osd_mode.start_x; x += 4)
+      { // ultra-fast direct byte processing for pre-OSD area with loop unrolling
+        *line_buf++ = pal[*scr_line++];
+        *line_buf++ = pal[*scr_line++];
+        *line_buf++ = pal[*scr_line++];
+        *line_buf++ = pal[*scr_line++];
+      }
+
+      for (; x < osd_mode.start_x; x++)
+        *line_buf++ = pal[*scr_line++];
+    }
+    else
+      for (; x < osd_mode.start_x; x++)
+      {
+        scr_line++;
+        *line_buf++ = pal[0];
+      }
+
+    for (; (x + 4) <= osd_mode.end_x; x += 4)
+    { // ultra-simplified OSD compositing with optimized unrolling
+      scr_line += 4;
+
+      *line_buf++ = pal[*osd_line++];
+      *line_buf++ = pal[*osd_line++];
+      *line_buf++ = pal[*osd_line++];
+      *line_buf++ = pal[*osd_line++];
+    }
+
+    for (; x < osd_mode.end_x; x++)
+    { // handle remaining bytes (0-3 bytes)
+      scr_line++;
+      *line_buf++ = pal[*osd_line++];
+    }
+
+    if (!osd_mode.full_width)
+    {
+      for (; (x + 4) <= h_visible_area; x += 4)
+      {
+        *line_buf++ = pal[*scr_line++];
+        *line_buf++ = pal[*scr_line++];
+        *line_buf++ = pal[*scr_line++];
+        *line_buf++ = pal[*scr_line++];
+      }
+
+      for (; x < h_visible_area; x++)
+        *line_buf++ = pal[*scr_line++];
+    }
+    else
+      for (; x < h_visible_area; x++)
+      {
+        scr_line++;
+
+        *line_buf++ = pal[0];
+      }
+  }
+  else
+  { // ultra-fast direct byte processing for non-OSD area with loop unrolling
+#endif
+    int x = 0;
+
+    for (; (x + 4) <= h_visible_area; x += 4)
+    {
+      *line_buf++ = pal[*scr_line++];
+      *line_buf++ = pal[*scr_line++];
+      *line_buf++ = pal[*scr_line++];
+      *line_buf++ = pal[*scr_line++];
+    }
+
+    for (; x < h_visible_area; x++)
+      *line_buf++ = pal[*scr_line++];
+#ifdef OSD_ENABLE
+  }
+#endif
+
+  // right margin
+  for (int x = h_margin; x--;)
+    *line_buf++ = pal[0];
+}
 
 static void __not_in_flash_func(dma_handler_vga)()
 {
@@ -103,8 +254,7 @@ static void __not_in_flash_func(dma_handler_vga)()
 
   switch (video_mode.div)
   {
-  case 2:
-#ifdef SCANLINES_ENABLE_LOW_RES
+  case 2: // every second line a scanline
     if (scanlines_mode)
     {
       if (line > 0)
@@ -116,11 +266,6 @@ static void __not_in_flash_func(dma_handler_vga)()
     else if (line > 1)
       line++;
 
-#else
-    if (line > 1)
-      line++;
-
-#endif
     break;
 
   case 3:
@@ -164,6 +309,7 @@ static void __not_in_flash_func(dma_handler_vga)()
   }
 
   int active_buf_idx;
+  uint16_t scaled_y = (y - v_margin) / video_mode.div; // represents the line in the original captured image
 
   switch (line)
   {
@@ -175,8 +321,16 @@ static void __not_in_flash_func(dma_handler_vga)()
     dma_channel_set_read_addr(dma_ch1, &v_out_dma_buf[0], false);
     return;
 
-  case 2:
-    dma_channel_set_read_addr(dma_ch1, &v_out_sync_hblank, false);
+  case 2: // scanline
+  case 5:
+    if (scanlines_mode == SCANLINES_100)
+      dma_channel_set_read_addr(dma_ch1, &v_out_sync_hblank, false);
+    else
+    { // the current line dimmed; v_out_scanline was last shown at least one line ago (gap lines are not
+      // adjacent, except in the thick DIV4 pattern, which writes the same content again)
+      render_line((uint16_t *)v_out_scanline, scaled_y, palette_dim);
+      dma_channel_set_read_addr(dma_ch1, &v_out_scanline, false);
+    }
     return;
 
   case 3:
@@ -187,118 +341,18 @@ static void __not_in_flash_func(dma_handler_vga)()
     dma_channel_set_read_addr(dma_ch1, &v_out_dma_buf[1], false);
     return;
 
-  case 5:
-    dma_channel_set_read_addr(dma_ch1, &v_out_sync_hblank, false);
-    return;
-
   default:
     return;
   }
 
-  uint16_t scaled_y = (y - v_margin) / video_mode.div; // represents the line in the original captured image
-  uint8_t *scr_line = &scr_buffer[scaled_y * (V_BUF_W / 2)];
-  uint16_t *line_buf = (uint16_t *)v_out_dma_buf[active_buf_idx];
-
-  // left margin
-  for (int x = h_margin; x--;)
-    *line_buf++ = palette[0];
-
-#ifdef OSD_ENABLE
-  // main image area with OSD compositing
-  bool osd_active = osd_state.visible && (scaled_y >= osd_mode.start_y && scaled_y < osd_mode.end_y);
-
-  if (osd_active)
-  { // calculate OSD buffer line offset using scaled coordinates (2 pixels per byte)
-    uint8_t *osd_line = &osd_buffer[(scaled_y - osd_mode.start_y) * (osd_mode.width / 2)];
-
-    int x = 0;
-
-    if (!osd_mode.full_width)
-    {
-      for (; (x + 4) <= osd_mode.start_x; x += 4)
-      { // ultra-fast direct byte processing for pre-OSD area with loop unrolling
-        *line_buf++ = palette[*scr_line++];
-        *line_buf++ = palette[*scr_line++];
-        *line_buf++ = palette[*scr_line++];
-        *line_buf++ = palette[*scr_line++];
-      }
-
-      for (; x < osd_mode.start_x; x++)
-        *line_buf++ = palette[*scr_line++];
-    }
-    else
-      for (; x < osd_mode.start_x; x++)
-      {
-        scr_line++;
-        *line_buf++ = palette[0];
-      }
-
-    for (; (x + 4) <= osd_mode.end_x; x += 4)
-    { // ultra-simplified OSD compositing with optimized unrolling
-      scr_line += 4;
-
-      *line_buf++ = palette[*osd_line++];
-      *line_buf++ = palette[*osd_line++];
-      *line_buf++ = palette[*osd_line++];
-      *line_buf++ = palette[*osd_line++];
-    }
-
-    for (; x < osd_mode.end_x; x++)
-    { // handle remaining bytes (0-3 bytes)
-      scr_line++;
-      *line_buf++ = palette[*osd_line++];
-    }
-
-    if (!osd_mode.full_width)
-    {
-      for (; (x + 4) <= h_visible_area; x += 4)
-      {
-        *line_buf++ = palette[*scr_line++];
-        *line_buf++ = palette[*scr_line++];
-        *line_buf++ = palette[*scr_line++];
-        *line_buf++ = palette[*scr_line++];
-      }
-
-      for (; x < h_visible_area; x++)
-        *line_buf++ = palette[*scr_line++];
-    }
-    else
-      for (; x < h_visible_area; x++)
-      {
-        scr_line++;
-
-        *line_buf++ = palette[0];
-      }
-  }
-  else
-  { // ultra-fast direct byte processing for non-OSD area with loop unrolling
-#endif
-    int x = 0;
-
-    for (; (x + 4) <= h_visible_area; x += 4)
-    {
-      *line_buf++ = palette[*scr_line++];
-      *line_buf++ = palette[*scr_line++];
-      *line_buf++ = palette[*scr_line++];
-      *line_buf++ = palette[*scr_line++];
-    }
-
-    for (; x < h_visible_area; x++)
-      *line_buf++ = palette[*scr_line++];
-#ifdef OSD_ENABLE
-  }
-#endif
-
-  // right margin
-  for (int x = h_margin; x--;)
-    *line_buf++ = palette[0];
-
+  render_line((uint16_t *)v_out_dma_buf[active_buf_idx], scaled_y, palette);
   dma_channel_set_read_addr(dma_ch1, &v_out_dma_buf[active_buf_idx], false);
 }
 
-void set_vga_scanlines_mode(bool sl_mode)
+void set_vga_scanlines_mode(uint8_t level)
 {
-  scanlines_mode = sl_mode;
+  build_palette(palette_dim, vga_scanline_level(level)); // before enabling: the first scanline uses it
+  scanlines_mode = level;
 }
 
 void start_vga()
@@ -316,24 +370,10 @@ void start_vga()
   static const uint8_t V_SYNC = 0b10000000;
   static const uint8_t VH_SYNC = 0b11000000;
 
-  // palette initialization
-  for (int i = 0; i < 16; i++)
-  {
-    uint8_t Yi = (i >> 3) & 1;
-    uint8_t Ri = ((i >> 2) & 1) ? (Yi ? R_HIGH : R_LOW) : 0;
-    uint8_t Gi = ((i >> 1) & 1) ? (Yi ? G_HIGH : G_LOW) : 0;
-    uint8_t Bi = ((i >> 0) & 1) ? (Yi ? B_HIGH : B_LOW) : 0;
-
-    for (int j = 0; j < 16; j++)
-    {
-      uint8_t Yj = (j >> 3) & 1;
-      uint8_t Rj = ((j >> 2) & 1) ? (Yj ? R_HIGH : R_LOW) : 0;
-      uint8_t Gj = ((j >> 1) & 1) ? (Yj ? G_HIGH : G_LOW) : 0;
-      uint8_t Bj = ((j >> 0) & 1) ? (Yj ? B_HIGH : B_LOW) : 0;
-
-      palette[(i * 16) + j] = ((uint16_t)(Ri | Gi | Bi | (NO_SYNC ^ video_mode.sync_polarity)) << 8) | (Rj | Gj | Bj | (NO_SYNC ^ video_mode.sync_polarity));
-    }
-  }
+  // the setting may have changed while another output type was active
+  scanlines_mode = settings.scanlines_mode;
+  build_palette(palette, SCANLINES_OFF);
+  build_palette(palette_dim, vga_scanline_level(scanlines_mode));
 
   // set VGA pins
   for (int i = VGA_PIN_D0; i < VGA_PIN_D0 + 8; i++)
@@ -360,16 +400,18 @@ void start_vga()
   memset((uint8_t *)v_out_sync_vsync, (V_SYNC ^ video_mode.sync_polarity), whole_line);
   memset((uint8_t *)v_out_sync_vsync + h_sync_pulse_front, (VH_SYNC ^ video_mode.sync_polarity), h_sync_pulse);
 
-  // Ping-pong image line buffers as a single contiguous block
-  v_out_dma_buf_alloc = calloc(whole_line * 2, sizeof(uint8_t));
+  // Ping-pong image line buffers and the scanline buffer as a single contiguous block
+  v_out_dma_buf_alloc = calloc(whole_line * 3, sizeof(uint8_t));
 
   if (!v_out_dma_buf_alloc)
     watchdog_reboot(0, 0, 0);
 
   v_out_dma_buf[0] = v_out_dma_buf_alloc;
   v_out_dma_buf[1] = (uint32_t *)((uint8_t *)v_out_dma_buf_alloc + whole_line);
+  v_out_scanline = (uint32_t *)((uint8_t *)v_out_dma_buf_alloc + whole_line * 2);
   memcpy((uint8_t *)v_out_dma_buf[0], (uint8_t *)v_out_sync_hblank, whole_line);
   memcpy((uint8_t *)v_out_dma_buf[1], (uint8_t *)v_out_sync_hblank, whole_line);
+  memcpy((uint8_t *)v_out_scanline, (uint8_t *)v_out_sync_hblank, whole_line);
 
   // PIO initialization
   pio_sm_config c = pio_get_default_sm_config();
@@ -470,6 +512,7 @@ void stop_vga()
 
   v_out_dma_buf[0] = NULL;
   v_out_dma_buf[1] = NULL;
+  v_out_scanline = NULL;
 
   // free sync buffers
   if (v_out_sync_hblank != NULL)

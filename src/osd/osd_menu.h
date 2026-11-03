@@ -16,6 +16,7 @@
 #define MENU_TYPE_ABOUT 5
 #define MENU_TYPE_FF_OSD 6
 #define MENU_TYPE_HARDWARE 7
+#define MENU_TYPE_CRT 8
 
 // Menu-specific OSD state extension
 typedef struct

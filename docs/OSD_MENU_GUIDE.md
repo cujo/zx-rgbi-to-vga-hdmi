@@ -73,6 +73,7 @@ UP / DOWN go to the Gotek at once, with repeat (holding steps through the images
 OUTPUT SETTINGS      >
 CAPTURE SETTINGS     >
 IMAGE ADJUST         >
+CRT EFFECTS          >
 FF OSD CONFIG        >   (FlashFloppy builds only)
 HARDWARE CONFIG      >   (LEO V3 boards only)
 ABOUT                >
@@ -91,7 +92,6 @@ EXIT
 MODE         [resolution]    - Video output resolution
 RATE         STANDARD/PENTAGON - Frame rate: standard or the Pentagon's 48.8 Hz
 UP/DOWN      DEFAULT/SWITCH MODE - UP / DOWN outside the menu: as before or switch the mode
-SCANLINES    ON/OFF          - Scanline filter (VGA only, certain modes)
 BUFFERING    X1/X3           - Frame buffering mode (always X3 at the PENTAGON rate)
 < BACK TO MAIN
 ```
@@ -117,6 +117,24 @@ BUFFERING    X1/X3           - Frame buffering mode (always X3 at the PENTAGON r
 - **VGA:** 640×480 (60Hz), 720×576 (50Hz), 800×600, 1024×768 (DIV3/DIV4), 1280×1024 (DIV3/DIV4) (60Hz)
 - If a VGA monitor shows 720×576 as 800×600 (broken geometry), use 800×600; at 48.8 Hz the same can happen
   to 640×480
+
+### CRT EFFECTS
+
+```text
+SCANLINES    OFF/ADAPT/25%/50%/75%/100%/BEAM - Scanline level (BEAM: gap lit by both neighbor lines)
+BEAM         TV/SOFT/PVM/SHARP               - Beam width for BEAM scanlines
+GRILLE       OFF/5%/10%/15%/30%/45%          - Phosphor mask strength
+MASK         MONO/MG/MONO SLOT/MG SLOT       - Phosphor mask type
+NORMAL       80%/85%/67%/75%                 - Level of the non-BRIGHT colors (80%: the light of 67% without scanlines)
+< BACK TO MAIN
+```
+
+- Press SEL to step a setting to its next value; it applies immediately.
+- Dimmed items do not apply and do not change: BEAM needs BEAM scanlines; GRILLE, MASK and NORMAL need scanlines
+  on (off: normal colors at 67%, no mask); MASK also needs a GRILLE strength.
+- VGA: SCANLINES cycles OFF, 25%, 50%, 75%, 100%; the other items are DVI only. With 4 levels per channel the
+  VGA DAC rounds them: 25% is one DAC step lower (BRIGHT 2/3, normal 1/3), 50% leaves both at 1/3, 75% leaves
+  BRIGHT at 1/3 and normal black, 100% is black. ADAPT and BEAM chosen on DVI show as 25% (they look the same).
 
 ### CAPTURE SETTINGS
 

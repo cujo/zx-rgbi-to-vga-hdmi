@@ -35,13 +35,14 @@ static const uint8_t mask_bit_positions[] = {
 #define MAIN_ITEM_OUTPUT 0
 #define MAIN_ITEM_CAPTURE 1
 #define MAIN_ITEM_IMAGE_ADJ 2
+#define MAIN_ITEM_CRT 3
 
 // Compute subsequent indices based on which optional items are enabled
 #ifdef OSD_FF_ENABLE
-#define MAIN_ITEM_FF_OSD 3
-#define _NEXT_AFTER_FF 4
+#define MAIN_ITEM_FF_OSD 4
+#define _NEXT_AFTER_FF 5
 #else
-#define _NEXT_AFTER_FF 3
+#define _NEXT_AFTER_FF 4
 #endif
 
 #ifdef HW_CONFIG_ENABLE
@@ -370,7 +371,9 @@ void osd_menu_update()
         if (osd_menu.current_menu == MENU_TYPE_MAIN)
             max_items = MAIN_ITEM_COUNT - 1;
         else if (osd_menu.current_menu == MENU_TYPE_OUTPUT)
-            max_items = 5; // Output menu: 0-5 (6 items: mode, rate, up/down switch mode, scanlines, buffering, back)
+            max_items = 4; // Output menu: 0-4 (5 items: mode, rate, up/down switch mode, buffering, back)
+        else if (osd_menu.current_menu == MENU_TYPE_CRT)
+            max_items = CRT_SETTING_COUNT; // CRT effects menu: the settings (crt_setting_t order), back
         else if (osd_menu.current_menu == MENU_TYPE_CAPTURE)
             max_items = 5; // Capture menu: 0-5 (6 items: freq, mode, divider, sync, mask, back) - divider always shown but dimmed for SELF
         else if (osd_menu.current_menu == MENU_TYPE_IMAGE_ADJUST)
@@ -505,6 +508,10 @@ void osd_menu_update()
                 { // Image Adjust
                     menu_changed = osd_menu_enter_submenu(MENU_TYPE_IMAGE_ADJUST);
                 }
+                else if (osd_menu_state.selected_item == MAIN_ITEM_CRT)
+                { // CRT effects
+                    menu_changed = osd_menu_enter_submenu(MENU_TYPE_CRT);
+                }
 #ifdef MAIN_ITEM_FF_OSD
                 else if (osd_menu_state.selected_item == MAIN_ITEM_FF_OSD)
                 { // FF OSD Config
@@ -537,7 +544,7 @@ void osd_menu_update()
             }
             else if (osd_menu.current_menu == MENU_TYPE_OUTPUT)
             {                                // Output submenu selection
-                uint8_t back_item_index = 5; // 6 items (mode, rate, up/down switch mode, scanlines, buffering, back)
+                uint8_t back_item_index = 4; // 5 items (mode, rate, up/down switch mode, buffering, back)
 
                 if (osd_menu_state.selected_item == back_item_index)
                 { // Back to Main
@@ -563,30 +570,6 @@ void osd_menu_update()
                     osd_state.needs_redraw = true;
                 }
                 else if (osd_menu_state.selected_item == 3)
-                { // Scanlines - toggle
-                    // Only allow toggle for VGA and when scanlines are supported
-                    bool scanlines_supported = false;
-
-                    if (settings.video_out_type == VGA)
-                    {
-#ifdef SCANLINES_ENABLE_LOW_RES
-                        // When SCANLINES_ENABLE_LOW_RES is defined, scanlines are supported for all div values
-                        scanlines_supported = true;
-#else
-                        // When SCANLINES_ENABLE_LOW_RES is not defined, only support div 3 and 4
-                        uint8_t div = video_modes[settings.video_out_mode]->div;
-                        scanlines_supported = (div == 3 || div == 4);
-#endif
-                    }
-
-                    if (scanlines_supported)
-                    {
-                        settings.scanlines_mode = !settings.scanlines_mode;
-                        set_scanlines_mode();
-                        osd_state.needs_redraw = true;
-                    }
-                }
-                else if (osd_menu_state.selected_item == 4)
                 { // Buffering - toggle between X1 and X3 (at the Pentagon rate always X3)
                     if (!video_mode_pentagon(settings.video_out_mode))
                     {
@@ -594,6 +577,16 @@ void osd_menu_update()
                         apply_buffering_mode();
                         osd_state.needs_redraw = true;
                     }
+                }
+            }
+            else if (osd_menu.current_menu == MENU_TYPE_CRT)
+            { // CRT effects submenu selection: a setting (next value) or back
+                if (osd_menu_state.selected_item == CRT_SETTING_COUNT)
+                    menu_changed = osd_menu_go_back();
+                else
+                {
+                    next_crt_setting(osd_menu_state.selected_item);
+                    osd_state.needs_redraw = true;
                 }
             }
             else if (osd_menu.current_menu == MENU_TYPE_CAPTURE)
@@ -854,6 +847,7 @@ static void render_main_menu()
         "OUTPUT SETTINGS",
         "CAPTURE SETTINGS",
         "IMAGE ADJUST",
+        "CRT EFFECTS",
 #ifdef MAIN_ITEM_FF_OSD
         "FF OSD CONFIG",
 #endif
@@ -877,32 +871,45 @@ static void render_main_menu()
     }
 }
 
+// CRT effects submenu items: the settings (crt_setting_t order)
+static const char *crt_setting_names[CRT_SETTING_COUNT] = {"SCANLINES", "BEAM", "GRILLE", "MASK", "NORMAL"};
+
+static const char *crt_setting_value(crt_setting_t setting)
+{
+    static const char *scanlines[] = {"OFF", "ADAPT", "25%", "50%", "75%", "100%", "BEAM"};
+    static const char *widths[] = {[BEAM_WIDTH_TV] = "TV", [BEAM_WIDTH_SOFT] = "SOFT", [BEAM_WIDTH_PVM] = "PVM", [BEAM_WIDTH_SHARP] = "SHARP"};
+    static const char *grille[] = {[GRILLE_OFF] = "OFF", [GRILLE_5] = "5%", [GRILLE_10] = "10%", [GRILLE_15] = "15%", [GRILLE_30] = "30%", [GRILLE_45] = "45%"};
+    static const char *masks[] = {[GRILLE_MASK_MONO] = "MONO", [GRILLE_MASK_MG] = "MG", [GRILLE_MASK_SLOT] = "MONO SLOT", [GRILLE_MASK_MG_SLOT] = "MG SLOT"};
+    static const char *normal[] = {[NORMAL_LEVEL_170] = "67%", [NORMAL_LEVEL_192] = "75%", [NORMAL_LEVEL_205] = "80%", [NORMAL_LEVEL_216] = "85%"};
+
+    switch (setting)
+    {
+    case CRT_SCANLINES:
+        return scanlines[crt_scanlines_level()];
+    case CRT_BEAM_WIDTH:
+        return widths[CRTOPT_WIDTH(settings.crt_options)];
+    case CRT_GRILLE:
+        return grille[GRILLE_LEVEL(settings.grille_mode)];
+    case CRT_MASK:
+        return masks[GRILLE_MASK(settings.grille_mode)];
+    case CRT_NORMAL:
+        return normal[CRTOPT_NORMAL(settings.crt_options)];
+    default:
+        return "";
+    }
+}
+
 static void render_output_menu()
 {
     osd_text_print_centered(OSD_SUBTITLE_ROW, "OUTPUT SETTINGS", OSD_COLOR_SELECTED, OSD_COLOR_BACKGROUND, 0);
 
-    for (int i = 0; i < 6; i++)
+    for (int i = 0; i < 5; i++)
     {
         uint8_t row = OSD_MENU_START_ROW + i;
         uint8_t color = OSD_COLOR_TEXT;
         uint8_t fg_color, bg_color;
 
-        if (i == 3)
-        {
-            if (settings.video_out_type == DVI)
-                color = OSD_COLOR_DIMMED;
-            else if (settings.video_out_type == VGA)
-            {
-#ifndef SCANLINES_ENABLE_LOW_RES
-                uint8_t div = video_modes[settings.video_out_mode]->div;
-
-                if (div != 3 && div != 4)
-                    color = OSD_COLOR_DIMMED;
-#endif
-            }
-        }
-
-        if (i == 4 && video_mode_pentagon(settings.video_out_mode))
+        if (i == 3 && video_mode_pentagon(settings.video_out_mode))
             color = OSD_COLOR_DIMMED; // always X3 at the Pentagon rate
 
         menu_item_colors(i == osd_menu_state.selected_item, i < 2 && osd_menu_state.tuning_mode, color, &fg_color, &bg_color);
@@ -916,14 +923,32 @@ static void render_output_menu()
         else if (i == 2)
             osd_text_printf(row, 2, fg_color, bg_color, 0, "%-9s %s", "UP/DOWN", UPDOWN_SWITCH_MODE ? "SWITCH MODE" : "DEFAULT");
         else if (i == 3)
-            osd_text_printf(row, 2, fg_color, bg_color, 0, "%-9s %s", "SCANLINES", settings.scanlines_mode ? "ON" : "OFF");
-        else if (i == 4)
             osd_text_printf(row, 2, fg_color, bg_color, 0, "%-9s %s", "BUFFERING", buffering_x3() ? "X3" : "X1");
-        else if (i == 5)
+        else if (i == 4)
             osd_text_print(row, 2, "< BACK TO MAIN", fg_color, bg_color, 0);
 
         if (i < 2 && i == osd_menu_state.selected_item && osd_menu_state.tuning_mode)
             osd_text_set_char(row, 1, '>', fg_color, bg_color);
+    }
+}
+
+// CRT effects submenu: the settings (crt_setting_t order), dimmed where they change nothing, then back
+static void render_crt_menu()
+{
+    osd_text_print_centered(OSD_SUBTITLE_ROW, "CRT EFFECTS", OSD_COLOR_SELECTED, OSD_COLOR_BACKGROUND, 0);
+
+    for (int i = 0; i <= CRT_SETTING_COUNT; i++)
+    {
+        uint8_t row = OSD_MENU_START_ROW + i;
+        uint8_t fg_color, bg_color;
+        uint8_t color = i < CRT_SETTING_COUNT && !crt_setting_active(i) ? OSD_COLOR_DIMMED : OSD_COLOR_TEXT;
+
+        menu_item_colors(i == osd_menu_state.selected_item, false, color, &fg_color, &bg_color);
+
+        if (i < CRT_SETTING_COUNT)
+            osd_text_printf(row, 2, fg_color, bg_color, 0, "%-9s %s", crt_setting_names[i], crt_setting_value(i));
+        else
+            osd_text_print(row, 2, "< BACK TO MAIN", fg_color, bg_color, 0);
     }
 }
 
@@ -1163,6 +1188,10 @@ void osd_update_text_buffer()
 
     case MENU_TYPE_MASK:
         render_mask_menu();
+        break;
+
+    case MENU_TYPE_CRT:
+        render_crt_menu();
         break;
 
     case MENU_TYPE_ABOUT:

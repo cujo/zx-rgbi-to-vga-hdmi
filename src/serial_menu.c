@@ -1,3 +1,5 @@
+#include <string.h>
+
 #include "pico/stdio.h"
 #include "hardware/clocks.h"
 #include "hardware/pio.h"
@@ -64,8 +66,7 @@ void print_main_menu()
     printf("  o   set video output type (DVI/VGA)\n");
     printf("  v   set video resolution\n");
 
-    if (settings.video_out_type == VGA)
-        printf("  s   set scanlines mode\n");
+    printf("  s   set scanlines mode\n");
 
     printf("  b   set buffering mode\n");
     printf("  c   set capture synchronization source\n");
@@ -113,11 +114,24 @@ void print_video_out_type_menu()
     printf("  q   exit to main menu\n\n");
 }
 
+// scanline submenu keys, in crt_setting_t order
+static const char crt_setting_keys[] = "swgmn";
+
 void print_scanlines_mode_menu()
 {
     printf("\n      * Scanlines mode *\n\n");
 
-    printf("  s   change scanlines mode\n\n");
+    printf("  s   change scanlines mode\n");
+
+    if (settings.video_out_type == DVI) // VGA: OFF, 25, 50, 75, 100%
+    {
+        printf("  w   change beam width (BEAM scanlines)\n");
+        printf("  g   change mask strength (vertical lines, with scanlines on)\n");
+        printf("  m   change mask type (mono / MG / slot)\n");
+        printf("  n   change normal (non-BRIGHT) color level (with scanlines on)\n");
+    }
+
+    printf("\n");
 
     printf("  p   show configuration\n");
     printf("  h   show help (this menu)\n");
@@ -254,12 +268,23 @@ void print_video_out_mode()
 
 void print_scanlines_mode()
 {
-    printf("  Scanlines ................... ");
+    static const char *scanlines[] = {"disabled", "adaptive", "25%", "50%", "75%", "100% (black)", "beam (CRT model)"};
+    static const char *widths[] = {[BEAM_WIDTH_TV] = "TV (0.40)", [BEAM_WIDTH_SOFT] = "soft (0.42)", [BEAM_WIDTH_PVM] = "PVM (0.33)", [BEAM_WIDTH_SHARP] = "sharp (0.38)"};
+    static const char *grille[] = {[GRILLE_OFF] = "disabled", [GRILLE_5] = "5%", [GRILLE_10] = "10%", [GRILLE_15] = "15%", [GRILLE_30] = "30%", [GRILLE_45] = "45%"};
+    static const char *masks[] = {[GRILLE_MASK_MONO] = "mono", [GRILLE_MASK_MG] = "magenta / green", [GRILLE_MASK_SLOT] = "mono, slot", [GRILLE_MASK_MG_SLOT] = "magenta / green, slot"};
+    static const char *normal[] = {[NORMAL_LEVEL_170] = "170 (67%)", [NORMAL_LEVEL_192] = "192 (75%)", [NORMAL_LEVEL_205] = "205 (80%)", [NORMAL_LEVEL_216] = "216 (85%)"};
 
-    if (settings.scanlines_mode)
-        printf("enabled\n");
-    else
-        printf("disabled\n");
+    printf("  Scanlines ................... %s\n", scanlines[crt_scanlines_level()]);
+
+    if (crt_setting_active(CRT_BEAM_WIDTH))
+        printf("  Beam width .................. %s\n", widths[CRTOPT_WIDTH(settings.crt_options)]);
+
+    if (crt_setting_active(CRT_GRILLE))
+    {
+        printf("  Mask strength ............... %s\n", grille[GRILLE_LEVEL(settings.grille_mode)]);
+        printf("  Mask type ................... %s\n", masks[GRILLE_MASK(settings.grille_mode)]);
+        printf("  Normal color level .......... %s\n", normal[CRTOPT_NORMAL(settings.crt_options)]);
+    }
 }
 
 void print_buffering_mode()
@@ -478,8 +503,7 @@ void print_settings()
     print_video_out_type();
     print_video_out_mode();
 
-    if (settings.video_out_type == VGA)
-        print_scanlines_mode();
+    print_scanlines_mode();
 
     print_buffering_mode();
     print_cap_sync_mode();
@@ -651,12 +675,6 @@ void handle_serial_menu()
 
         case 's':
         {
-            if (settings.video_out_type != VGA)
-            {
-                inchar = 0;
-                break;
-            }
-
             inchar = 'h';
 
             while (1)
@@ -674,10 +692,13 @@ void handle_serial_menu()
                     print_scanlines_mode_menu();
                     break;
 
-                case 's':
-                    settings.scanlines_mode = !settings.scanlines_mode;
+                case 's': // scanlines, beam width, mask strength and type, normal level
+                case 'w':
+                case 'g':
+                case 'm':
+                case 'n':
+                    next_crt_setting(strchr(crt_setting_keys, inchar) - crt_setting_keys);
                     print_scanlines_mode();
-                    set_scanlines_mode();
                     break;
 
                 default:

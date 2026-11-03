@@ -153,10 +153,75 @@ void stop_video_output()
   }
 }
 
+uint8_t crt_scanlines_level()
+{
+  uint8_t level = settings.scanlines_mode;
+
+  if (settings.video_out_type == VGA && (level == SCANLINES_ADAPTIVE || level == SCANLINES_BEAM))
+    return SCANLINES_25; // VGA: OFF, 25, 50, 75, 100% (on a 2-bit DAC ADAPT looks like 25%)
+
+  return level;
+}
+
+bool crt_setting_active(crt_setting_t setting)
+{
+  // DVI only; the normal level and the mask apply with scanlines on
+  bool dvi_on = settings.video_out_type == DVI && settings.scanlines_mode != SCANLINES_OFF;
+
+  switch (setting)
+  {
+  case CRT_SCANLINES:
+    return true;
+  case CRT_BEAM_WIDTH:
+    return dvi_on && settings.scanlines_mode == SCANLINES_BEAM;
+  case CRT_MASK:
+    return dvi_on && GRILLE_LEVEL(settings.grille_mode) != GRILLE_OFF;
+  default: // CRT_GRILLE, CRT_NORMAL
+    return dvi_on;
+  }
+}
+
+void next_crt_setting(crt_setting_t setting)
+{
+  uint8_t grille = GRILLE_LEVEL(settings.grille_mode);
+  uint8_t mask = GRILLE_MASK(settings.grille_mode);
+
+  if (setting >= CRT_SETTING_COUNT || !crt_setting_active(setting))
+    return;
+
+  switch (setting)
+  {
+  case CRT_SCANLINES:
+    if (settings.video_out_type == VGA) // OFF, 25, 50, 75, 100%
+      settings.scanlines_mode = crt_scanlines_level() >= SCANLINES_100 ? SCANLINES_OFF : crt_scanlines_level() == SCANLINES_OFF ? SCANLINES_25 : crt_scanlines_level() + 1;
+    else
+      settings.scanlines_mode = settings.scanlines_mode >= SCANLINES_LEVEL_MAX ? SCANLINES_OFF : settings.scanlines_mode + 1;
+
+    set_scanlines_mode();
+    return;
+  case CRT_BEAM_WIDTH:
+    settings.crt_options = CRT_OPTIONS((CRTOPT_WIDTH(settings.crt_options) + 1) % BEAM_WIDTH_COUNT, CRTOPT_NORMAL(settings.crt_options));
+    break;
+  case CRT_GRILLE:
+    settings.grille_mode = GRILLE_MODE((grille + 1) % GRILLE_COUNT, mask);
+    break;
+  case CRT_MASK:
+    settings.grille_mode = GRILLE_MODE(grille, (mask + 1) % GRILLE_MASK_COUNT);
+    break;
+  default: // CRT_NORMAL
+    settings.crt_options = CRT_OPTIONS(CRTOPT_WIDTH(settings.crt_options), (CRTOPT_NORMAL(settings.crt_options) + 1) % NORMAL_LEVEL_COUNT);
+    break;
+  }
+
+  set_dvi_crt(); // the settings above are DVI only (crt_setting_active)
+}
+
 void set_scanlines_mode()
 {
   if (settings.video_out_type == VGA)
     set_vga_scanlines_mode(settings.scanlines_mode);
+  else if (settings.video_out_type == DVI)
+    set_dvi_scanlines_mode(settings.scanlines_mode);
 }
 
 void draw_welcome_screen(video_mode_t video_mode)

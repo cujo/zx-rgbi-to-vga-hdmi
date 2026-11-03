@@ -48,7 +48,7 @@ Video does not slow down: the capture and DVI/VGA interrupt handlers run from RA
 - **Video Output:**
   - VGA output with selectable resolutions: 640×480 @60Hz, 720×576 @50Hz, 800×600 @60Hz, 1024×768 @60Hz, 1280×1024 @60Hz.
   - HDMI (DVI) resolutions: 640×480 @60Hz and 720×576 @50Hz.
-  - Optional scanline effect on the VGA output at higher resolutions for a retro look.
+  - Scanlines on both outputs. HDMI (DVI): levels ADAPT, 25/50/75/100% and BEAM (gap lit by both neighbor lines, selectable beam width), plus a phosphor mask (GRILLE / MASK) and the level of normal colors (NORMAL, 80% by default), both only with scanlines on. VGA: OFF, 25, 50, 75 and 100% (black), in all modes, rounded to its 2-bit DAC.
   - "NO SIGNAL" message when no input is detected.
 - **Keyboard Input:**
   - PS/2 keyboard support (PIO-based, IRQ-driven).

@@ -162,6 +162,7 @@ target_sources(
     ${CMAKE_CURRENT_LIST_DIR}/src/settings.c 
     ${CMAKE_CURRENT_LIST_DIR}/src/led.c
     ${CMAKE_CURRENT_LIST_DIR}/src/video/dvi.c
+    ${CMAKE_CURRENT_LIST_DIR}/src/video/crt.c
     ${CMAKE_CURRENT_LIST_DIR}/src/video/rgb_capture.c 
     ${CMAKE_CURRENT_LIST_DIR}/src/video/v_buf.c 
     ${CMAKE_CURRENT_LIST_DIR}/src/video/vga.c 

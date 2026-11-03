@@ -303,14 +303,90 @@ typedef struct hw_config_t
 
 #endif
 
+// scanline levels; DVI uses all of them, VGA only off / on (black lines)
+// percentages are the darkening strength: 25% keeps 75% of the line brightness, 100% is black
+typedef enum scanlines_level_t
+{
+  SCANLINES_OFF = 0,
+  SCANLINES_ADAPTIVE, // dark colors darkened more than bright ones, like a CRT beam spot widening with brightness
+  SCANLINES_25,
+  SCANLINES_50,
+  SCANLINES_75,
+  SCANLINES_100,
+  SCANLINES_BEAM, // DVI: gap line lit by the beam profiles of both neighbor lines (crt-geom model)
+  SCANLINES_LEVEL_MAX = SCANLINES_BEAM
+} scanlines_level_t;
+
+// settings.crt_options: bits 0-1 BEAM beam width (beam_width_t), bits 2-3 normal level (normal_level_t). The byte is
+// former struct padding, 0 in settings saved by older firmware: both defaults are 0.
+#define CRTOPT_WIDTH(o) ((o) & 0x03)
+#define CRTOPT_NORMAL(o) (((o) >> 2) & 0x03)
+#define CRT_OPTIONS(width, normal) ((uint8_t)(((normal) << 2) | (width)))
+
+// BEAM scanlines: beam width (distance scale of the beam profile, see the beam gap tables in crt.c). Cycling +1 goes
+// TV, SOFT, PVM, SHARP.
+
+typedef enum beam_width_t
+{
+  BEAM_WIDTH_TV = 0, // 0.40: a good consumer TV at home brightness
+  BEAM_WIDTH_SOFT,   // 0.42: small or cheap TV, or high brightness
+  BEAM_WIDTH_PVM,    // 0.33: sharp studio monitor
+  BEAM_WIDTH_SHARP,  // 0.38: sharp-beam TV (Trinitron-like)
+  BEAM_WIDTH_COUNT
+} beam_width_t;
+
+// DVI phosphor mask, settings.grille_mode: bits 0-3 strength (grille_mode_t), bits 4-5 type (grille_mask_t).
+// One of the two output pixels of each source pixel is darkened by the strength, drawing vertical lines; only with
+// scanlines on. 0 (OFF, mono grille) is the default: the field is former struct padding, 0 in older saves.
+typedef enum grille_mode_t
+{
+  GRILLE_OFF = 0,
+  GRILLE_5,
+  GRILLE_10,
+  GRILLE_15,
+  GRILLE_30,
+  GRILLE_45,
+  GRILLE_COUNT
+} grille_mode_t;
+
+// mask type flags: MG = color mask (first pixel keeps R and B, second keeps G, like an RGB triad split in two),
+// SLOT = the pattern is swapped on scanline (gap) rows, a staggered slot-mask-like layout; needs scanlines on
+typedef enum grille_mask_t
+{
+  GRILLE_MASK_MONO = 0,
+  GRILLE_MASK_MG = 1,
+  GRILLE_MASK_SLOT = 2,
+  GRILLE_MASK_MG_SLOT = 3,
+  GRILLE_MASK_COUNT
+} grille_mask_t;
+
+#define GRILLE_LEVEL(m) ((m) & 0x0f)
+#define GRILLE_MASK(m) (((m) >> 4) & 0x03)
+#define GRILLE_MODE(level, mask) ((uint8_t)(((mask) << 4) | (level)))
+
+// DVI level of normal (non-BRIGHT) colors with scanlines on (off: 170, the converter's original level); BRIGHT is
+// 255. A higher level makes up for the light the scanlines take. Emulators use about 85% (0xD7 / 0xD8),
+// measurements of real machines are lower and differ by model. 0 = 80% is the default: with scanlines it keeps
+// about the average light of normal colors without them (67%). Cycling +1 goes 80, 85, 67, 75%.
+typedef enum normal_level_t
+{
+  NORMAL_LEVEL_205 = 0, // 80%
+  NORMAL_LEVEL_216,     // 85%
+  NORMAL_LEVEL_170,     // 67%
+  NORMAL_LEVEL_192,     // 75%
+  NORMAL_LEVEL_COUNT
+} normal_level_t;
+
 typedef struct settings_t
 {
   video_out_type_t video_out_type;
   video_out_mode_t video_out_mode;
-  bool scanlines_mode;
+  uint8_t scanlines_mode; // scanlines_level_t; was bool, so a saved 1 ("on") reads as SCANLINES_ADAPTIVE
   bool buffering_mode;
   bool video_sync_mode;
   cap_sync_mode_t cap_sync_mode;
+  uint8_t crt_options; // CRTOPT_WIDTH, CRTOPT_NORMAL; former padding before frequency (layout and size unchanged)
+  uint8_t grille_mode; // grille_mode_t; the other former padding byte before frequency
   uint32_t frequency;
   int8_t ext_clk_divider;
   int8_t delay;
@@ -415,10 +491,6 @@ extern uint8_t g_v_buf[];
 #define V_BUF_W (ACTIVE_VIDEO_TIME * (FREQUENCY_MAX / 1000000))
 #define V_BUF_H 304
 #define V_BUF_SZ (V_BUF_H * V_BUF_W / 2)
-
-// enable scanlines on 640x480 and 800x600 resolutions
-// not enabled due to reduced image brightness and uneven line thickness caused by monitor scaler
-// #define SCANLINES_ENABLE_LOW_RES
 
 // select scanline thickness for the 1024x768 and 1280x1024 DIV4 video modes
 // thin - show scanline once every four lines

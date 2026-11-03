@@ -6,6 +6,7 @@
 
 #include "g_config.h"
 #include "dvi.h"
+#include "crt.h"
 #include "video.pio.h"
 #include "v_buf.h"
 
@@ -29,6 +30,9 @@ static uint32_t *v_out_dma_buf[2];
 static uint32_t *v_out_dma_buf_alloc; // single contiguous allocation for both ping-pong buffers
 static uint32_t *v_out_sync_hblank;   // pre-filled H-blank line (NO_SYNC + H_SYNC + NO_SYNC)
 static uint32_t *v_out_sync_vsync;    // pre-filled V-sync line (V_SYNC + VH_SYNC + V_SYNC)
+static uint32_t *v_out_scanline;      // scanline: dimmed copy of the previous line + H-blank (keeps DE high, unlike v_out_sync_hblank)
+
+static uint8_t scanlines_mode = SCANLINES_OFF;
 
 // ISR state (file-scope for reset in stop_dvi)
 static uint16_t y = 0;
@@ -36,15 +40,27 @@ static uint8_t *scr_buffer = NULL;
 static uint32_t active_buf_idx = 0;
 
 static uint32_t pixels[256];
-// 4KB-aligned palette: 20 entries × 16 bytes (4 × uint32_t each)
-// Each entry: {normal_lo, normal_hi, inverted_lo, inverted_hi}
-// Entries 0-15: colors, 16-19: sync patterns
-static uint32_t palette[20 * 4] __attribute__((aligned(4096)));
+// 4KB-aligned palette: 172 entries × 16 bytes (4 × uint32_t each), 8-bit index
+// Each entry: {first pixel lo, hi, second pixel lo, hi}
+// Entries 0-15: colors, 16-19: sync patterns, 20-35: dimmed colors for scanlines (set_dim_palette),
+// 36-171: BEAM gap colors, one per unordered pair of colors (set_beam_palette)
+static uint32_t palette[172 * 4] __attribute__((aligned(4096)));
+// a line word holds two palette indices: bits 0-7 (first pixel) and 8-15 (second)
+#define IDX2(a, b) ((uint32_t)(a) | ((uint32_t)(b) << 8))
 // sync pulse pattern indexes (after 16 color entries)
 static const uint8_t NO_SYNC = 16;
 static const uint8_t H_SYNC = 17;
 static const uint8_t V_SYNC = 18;
 static const uint8_t VH_SYNC = 19;
+// first dimmed color entry; adding SCANLINE_IDX_ADD to a line word shifts both palette indices to it
+static const uint8_t DIM_BASE = 20;
+#define SCANLINE_IDX_ADD IDX2(20, 20)
+// first BEAM pair entry; beam_lut[(a << 4) | b] gives the entry for colors a and b (symmetric)
+static const uint8_t BEAM_BASE = 36;
+static uint8_t beam_lut[256];
+
+// CRT effect parameters (normal level, beam width, mask), set by set_all_palettes
+static crt_t crt;
 
 static uint64_t get_ser_diff_data(uint16_t dataR, uint16_t dataG, uint16_t dataB)
 {
@@ -115,6 +131,183 @@ static void pio_set_x(PIO pio, int sm, uint32_t v)
   }
 
   pio_sm_exec(pio, sm, instr_mov);
+}
+
+// TMDS control tokens; a data period must not contain them
+static const uint16_t tmds_ctrl[4] = {0x354, 0x0ab, 0x154, 0x2ab};
+
+// TMDS data codes that decode to v (DVI 1.0 decoder): bit 8 selects XOR / XNOR, bit 9 marks bits 0-7 inverted;
+// one code per (bit 8, bit 9) combination, keeping only codes with at most 5 transitions between adjacent bits.
+// Receivers tell data from control characters (7+ transitions) by that count and use it for character alignment;
+// codes with more transitions decode correctly but made the monitor drop the signal. Returns the count (0-4).
+static int tmds_codes(uint8_t v, uint16_t *out)
+{
+  int n = 0;
+
+  for (int m = 0; m < 4; m++)
+  {
+    bool xnor = m & 1;
+    bool inv = m & 2;
+    uint16_t q = v & 1;
+
+    for (int i = 1; i < 8; i++)
+      q |= ((((q >> (i - 1)) ^ (v >> i)) & 1) ^ xnor) << i;
+
+    uint16_t code = (inv ? (~q & 0xff) : q) | (xnor ? 0 : 1u << 8) | (inv ? 1u << 9 : 0);
+    bool ctrl = false;
+
+    for (int i = 0; i < 4; i++)
+      ctrl |= code == tmds_ctrl[i];
+
+    if (!ctrl && __builtin_popcount((code ^ (code >> 1)) & 0x1ff) <= 5)
+      out[n++] = code;
+  }
+
+  return n;
+}
+
+static int tmds_disparity(uint16_t code)
+{
+  return 2 * __builtin_popcount(code) - 10;
+}
+
+// zero-disparity codes for levels aa and bb (ca, na and cb, nb from tmds_codes); false if there is none
+static bool tmds_pair_codes(const uint16_t *ca, int na, const uint16_t *cb, int nb, uint16_t *code_a, uint16_t *code_b)
+{
+  for (int i = 0; i < na; i++)
+    for (int j = 0; j < nb; j++)
+      if (tmds_disparity(ca[i]) + tmds_disparity(cb[j]) == 0)
+      {
+        *code_a = ca[i];
+        *code_b = cb[j];
+        return true;
+      }
+
+  return false;
+}
+
+// codes for two consecutive pixels of levels a and b with zero total disparity (a pair that is not DC balanced
+// would shift the link's DC level on every pixel). Both levels may move by up to k; the smallest k wins, a moving
+// less than b when possible. Host check on the palette's levels (all normal levels and masks):
+// off by at most 3; over all pairs a != b: always found.
+static void tmds_pair(uint8_t a, uint8_t b, uint16_t *code_a, uint16_t *code_b)
+{
+  uint16_t ca[4], cb[4];
+
+  if (a == b)
+  { // the usual pair: a code and its bits 0-7 inverted (balanced, at most 5 transitions, within 1 LSB)
+    *code_a = tmds_encoder(a);
+    *code_b = *code_a ^ 0xff;
+    return;
+  }
+
+  for (int k = 0; k < 256; k++)
+    for (int da = 0; da <= k; da++) // the bright level first exact, then moving
+      for (int sa = 0; sa < 2; sa++)
+      {
+        int aa = sa ? a + da : a - da;
+
+        if (aa < 0 || aa > 255 || (sa && da == 0))
+          continue;
+
+        int na = tmds_codes(aa, ca);
+        int db_from = da == k ? 0 : k; // keep max(|da|, |db|) == k
+
+        for (int db = db_from; db <= k; db++)
+          for (int sb = 0; sb < 2; sb++)
+          {
+            int bb = sb ? b + db : b - db;
+
+            if (bb < 0 || bb > 255 || (sb && db == 0))
+              continue;
+
+            if (tmds_pair_codes(ca, na, cb, tmds_codes(bb, cb), code_a, code_b))
+              return;
+          }
+      }
+
+  // not reached; fall back to a plain balanced pair of a
+  *code_a = tmds_encoder(a);
+  *code_b = *code_a ^ 0xff;
+}
+
+// one palette entry = the two TMDS pixels of a source pixel, levels first and second (B, G, R), the mask applied.
+// Each channel's pair has zero total disparity; equal levels give a code and its bits 0-7 inverted.
+static void set_palette_entry2(int idx, const uint8_t *first, const uint8_t *second, bool gap_row)
+{
+  uint8_t a[3] = {first[0], first[1], first[2]}, b[3] = {second[0], second[1], second[2]};
+  uint16_t ca[3], cb[3];
+
+  crt_mask(&crt, a, b, gap_row);
+
+  for (int i = 0; i < 3; i++)
+    if (a[i] >= b[i])
+      tmds_pair(a[i], b[i], &ca[i], &cb[i]);
+    else
+      tmds_pair(b[i], a[i], &cb[i], &ca[i]);
+
+  uint64_t pa = get_ser_diff_data(ca[2], ca[1], ca[0]);
+  uint64_t pb = get_ser_diff_data(cb[2], cb[1], cb[0]);
+
+  palette[idx * 4 + 0] = (uint32_t)(pa);
+  palette[idx * 4 + 1] = (uint32_t)(pa >> 32);
+  palette[idx * 4 + 2] = (uint32_t)(pb);
+  palette[idx * 4 + 3] = (uint32_t)(pb >> 32);
+}
+
+// palette entries 0-15: the 16 colors
+static void set_color_palette()
+{
+  uint8_t ch[3];
+
+  for (int c = 0; c < 16; c++)
+  {
+    crt_color(&crt, c, ch);
+    set_palette_entry2(c, ch, ch, false);
+  }
+}
+
+// palette entries DIM_BASE..DIM_BASE+15: colors 0-15 as shown on scanlines
+// called while DMA may read them: a pixel may get a half-updated entry for one frame, which is harmless
+static void set_dim_palette(uint8_t level)
+{
+  uint8_t ch[3];
+
+  for (int c = 0; c < 16; c++)
+  {
+    crt_color(&crt, c, ch);
+    crt_dim(&crt, level, ch);
+    set_palette_entry2(DIM_BASE + c, ch, ch, true);
+  }
+}
+
+// palette entries BEAM_BASE.. and beam_lut: the gap color for every unordered pair of colors
+static void set_beam_palette()
+{
+  int idx = BEAM_BASE;
+
+  for (int a = 0; a < 16; a++)
+    for (int b = a; b < 16; b++, idx++)
+    {
+      uint8_t la[3], lb[3], ch[3];
+
+      crt_color(&crt, a, la);
+      crt_color(&crt, b, lb);
+      crt_beam(&crt, la, lb, ch);
+      set_palette_entry2(idx, ch, ch, true);
+      beam_lut[(a << 4) | b] = idx;
+      beam_lut[(b << 4) | a] = idx;
+    }
+}
+
+// all color entries (0-15, dim, BEAM) for scanline level `level` (the normal level and the mask depend on it)
+// called while DMA may read them: a pixel may get a half-updated entry for one frame, which is harmless
+static void set_all_palettes(uint8_t level)
+{
+  crt_from_settings(&crt, &settings, level);
+  set_color_palette();
+  set_dim_palette(level);
+  set_beam_palette();
 }
 
 static void __not_in_flash_func(dma_handler_dvi)()
@@ -227,7 +420,46 @@ static void __not_in_flash_func(dma_handler_dvi)()
       }
     }
 
-    dma_channel_set_read_addr(dma_ch1, &v_out_dma_buf[active_buf_idx & 1], false);
+    // odd lines repeat the even line, or show a scanline
+    // (scr_buffer != NULL: the even line was rendered from the source)
+    if ((y & 1) && scanlines_mode && scr_buffer != NULL)
+    { // the even line's buffer is being sent now; v_out_scanline was sent two lines ago and is free
+      uint32_t *dst = v_out_scanline;
+      uint16_t scaled_y = y / video_mode.div;
+      bool osd_line = false; // the even line has the OSD composited (entries 0-15 only)
+      bool beam = scanlines_mode == SCANLINES_BEAM && (scaled_y + 1) < V_BUF_H;
+
+#ifdef OSD_ENABLE
+      osd_line = osd_state.visible && scaled_y >= osd_mode.start_y && scaled_y < osd_mode.end_y;
+
+      if (osd_state.visible && (scaled_y + 1) >= osd_mode.start_y && scaled_y < osd_mode.end_y)
+        beam = false; // this line or the next one is under the OSD
+#endif
+
+      if (beam)
+      { // gap between source lines n and n + 1: pair entry per pixel (byte = 2 pixels, low nibble first, as in pixels[])
+        uint8_t *l0 = &scr_buffer[scaled_y * (V_BUF_W / 2)];
+        uint8_t *l1 = l0 + (V_BUF_W / 2);
+
+        for (int x = 0; x < h_visible_area; x++)
+        {
+          uint32_t a = *l0++;
+          uint32_t b = *l1++;
+          *dst++ = IDX2(beam_lut[((a & 0x0f) << 4) | (b & 0x0f)], beam_lut[(a & 0xf0) | (b >> 4)]);
+        }
+      }
+      else
+      { // a dimmed copy of the even line: the dimmed entries sit at a fixed offset from the line's
+        uint32_t *src = v_out_dma_buf[active_buf_idx & 1];
+
+        for (int x = 0; x < h_visible_area; x++)
+          *dst++ = *src++ + SCANLINE_IDX_ADD;
+      }
+
+      dma_channel_set_read_addr(dma_ch1, &v_out_scanline, false);
+    }
+    else
+      dma_channel_set_read_addr(dma_ch1, &v_out_dma_buf[active_buf_idx & 1], false);
   }
   else if (y >= (video_mode.v_visible_area + video_mode.v_front_porch) && y < (video_mode.v_visible_area + video_mode.v_front_porch + video_mode.v_sync_pulse))
   { // V sync — use pre-filled buffer
@@ -243,6 +475,9 @@ void start_dvi()
 {
   int whole_line = video_mode.whole_line;
 
+  // the setting may have changed while another output type was active
+  scanlines_mode = settings.scanlines_mode;
+
   set_sys_clock_khz(video_mode.sys_freq, true);
   sleep_ms(10);
 
@@ -250,7 +485,7 @@ void start_dvi()
   // byte order (LSB first): p1_color, p2_color (each palette entry has norm+inv)
   // pixels[]: byte (2 packed 4-bit pixels) → 2 palette indices
   for (int i = 0; i < 256; i++)
-    pixels[i] = (uint32_t)(((i >> 4) << 8) | (i & 0x0f));
+    pixels[i] = IDX2(i & 0x0f, i >> 4);
 
   // TMDS control character constants (negative polarity, per DVI spec)
   const uint16_t b0 = 0b1101010100; // CTRL_00 (no sync)
@@ -281,20 +516,8 @@ void start_dvi()
   palette[VH_SYNC * 4 + 2] = (uint32_t)(sync_val);
   palette[VH_SYNC * 4 + 3] = (uint32_t)(sync_val >> 32);
 
-  // color palette: 16 entries × 16 bytes {norm_lo, norm_hi, inv_lo, inv_hi}
-  for (int c = 0; c < 16; c++)
-  {
-    uint8_t Y = (c >> 3) & 1;
-    uint8_t R = ((c >> 2) & 1) ? (Y ? 255 : 170) : 0;
-    uint8_t G = ((c >> 1) & 1) ? (Y ? 255 : 170) : 0;
-    uint8_t B = ((c >> 0) & 1) ? (Y ? 255 : 170) : 0;
-    uint64_t normal = get_ser_diff_data(tmds_encoder(R), tmds_encoder(G), tmds_encoder(B));
-    uint64_t inverted = normal ^ 0x0003ffffffffffffl;
-    palette[c * 4 + 0] = (uint32_t)(normal);
-    palette[c * 4 + 1] = (uint32_t)(normal >> 32);
-    palette[c * 4 + 2] = (uint32_t)(inverted);
-    palette[c * 4 + 3] = (uint32_t)(inverted >> 32);
-  }
+  // color entries: 16 bytes each {first pixel lo, hi, second pixel lo, hi}
+  set_all_palettes(scanlines_mode);
 
   // set DVI data pins
   for (int i = DVI_PIN_D0; i < DVI_PIN_D0 + 6; i++)
@@ -330,6 +553,15 @@ void start_dvi()
   memset((uint8_t *)v_out_sync_vsync, V_SYNC, video_mode.h_visible_area + video_mode.h_front_porch);
   memset((uint8_t *)v_out_sync_vsync + video_mode.h_visible_area + video_mode.h_front_porch, VH_SYNC, video_mode.h_sync_pulse);
   memset((uint8_t *)v_out_sync_vsync + video_mode.h_visible_area + video_mode.h_front_porch + video_mode.h_sync_pulse, V_SYNC, video_mode.h_back_porch);
+
+  // scanline buffer: H-blank line, the visible area is rewritten on every odd line (starts black)
+  v_out_scanline = malloc(whole_line);
+
+  if (!v_out_scanline)
+    watchdog_reboot(0, 0, 0);
+
+  memcpy((uint8_t *)v_out_scanline, (uint8_t *)v_out_sync_hblank, whole_line);
+  memset((uint8_t *)v_out_scanline, 0, video_mode.h_visible_area);
 
   // Ping-pong image line buffers as a single contiguous block
   v_out_dma_buf_alloc = calloc(whole_line * 2, sizeof(uint8_t));
@@ -520,4 +752,26 @@ void stop_dvi()
     free(v_out_sync_vsync);
     v_out_sync_vsync = NULL;
   }
+
+  if (v_out_scanline != NULL)
+  {
+    free(v_out_scanline);
+    v_out_scanline = NULL;
+  }
+}
+
+// the CRT effect settings (beam width, mask, normal level) changed
+void set_dvi_crt()
+{
+  set_all_palettes(scanlines_mode);
+}
+
+void set_dvi_scanlines_mode(uint8_t level)
+{
+  // before enabling, so the first scanline already uses the new level; the normal level and the mask change with
+  // scanlines on / off. Not before start_dvi (crt.beam_gap unset), which builds all entries itself.
+  if (crt.beam_gap)
+    set_all_palettes(level);
+
+  scanlines_mode = level;
 }
