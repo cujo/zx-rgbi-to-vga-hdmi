@@ -22,6 +22,25 @@ Earlier releases of this project (up to v1.8.2) were built with the **Arduino fr
 
 ---
 
+## Building
+
+Configure with CMake, choosing the board with `-DBOARD=...` (see the list at the top of `CMakeLists.txt`), for example:
+
+```sh
+cmake -S . -B build/zero -G Ninja -DBOARD=BOARD_RP2040_ZERO
+cmake --build build/zero
+```
+
+### XIP flash clock divider (RP2040)
+
+The firmware raises the system clock to 240-270 MHz, and the external flash runs at the system clock divided by `FLASH_SPI_CLKDIV`. The Pico SDK default of 2 gives 120-135 MHz, which is too fast for the slow flash on some clone modules (for example RP2040-Zero clones): such a module does not start at all, with no USB serial and no video. The default here is 4 (60-68 MHz).
+
+To get back the SDK value on a module whose flash handles it, configure with `-DFLASH_SPI_CLKDIV=2`. The value must be even and at least 2. It is passed to the boot stage 2 code as well, which sets up the flash interface.
+
+Video does not slow down: the capture and DVI/VGA interrupt handlers run from RAM (`__not_in_flash_func`). Only code executed from flash, such as the menus and settings changes, runs slower.
+
+---
+
 ## Features
 
 ### Software

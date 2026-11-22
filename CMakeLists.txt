@@ -58,9 +58,22 @@ endif()
 if(USE_PICO2)
     set(PICO_BOARD pico2)
     set(PICO_PLATFORM rp2350-arm-s)
-else()  
+else()
     set(PICO_BOARD pico)
     set(PICO_PLATFORM rp2040)
+
+    # XIP flash clock = sys_clk / FLASH_SPI_CLKDIV. The SDK default for the pico board is 2, i.e. 120-135 MHz at
+    # the 240-270 MHz this firmware runs at: above what the slow flash of some clone modules (RP2040-Zero) handles,
+    # and such a module does not start. Set at directory level before pico_sdk_init() so boot2 (bs2_default),
+    # which configures the flash interface, gets it too.
+    set(FLASH_SPI_CLKDIV 4 CACHE STRING "XIP flash SPI clock divider (even, >=2)")
+
+    if(NOT FLASH_SPI_CLKDIV MATCHES "^[0-9]+$" OR FLASH_SPI_CLKDIV LESS 2 OR NOT FLASH_SPI_CLKDIV MATCHES "[02468]$")
+        message(FATAL_ERROR "FLASH_SPI_CLKDIV must be an even number >= 2, got '${FLASH_SPI_CLKDIV}'")
+    endif()
+
+    add_compile_definitions(PICO_FLASH_SPI_CLKDIV=${FLASH_SPI_CLKDIV})
+    message(STATUS "XIP flash SPI clock divider: ${FLASH_SPI_CLKDIV}")
 endif()
 
 # == DO NOT EDIT THE FOLLOWING LINES for the Raspberry Pi Pico VS Code Extension to work ==
