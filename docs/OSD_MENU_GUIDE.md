@@ -167,10 +167,13 @@ RESET TO DEFAULTS
 - Press SEL to enter tuning mode (`>` indicator, bright cyan highlight)
 - Use UP/DOWN to adjust value
 - Press SEL again to exit tuning mode
+- H_POS and V_POS are kept per resolution (D3 and D4 separately): switching the resolution restores the position
+  last set for it (the mode's preset until it is adjusted). The standard and the Pentagon rate of a resolution share
+  it. Saved with SAVE, like the other settings.
 
 **RESET TO DEFAULTS:**
 
-- Press SEL to reset all image adjustment values
+- Press SEL to reset all image adjustment values (the position to the current mode's preset)
 - Menu closes automatically after reset
 
 ### ABOUT

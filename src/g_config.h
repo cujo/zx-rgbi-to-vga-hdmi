@@ -254,6 +254,8 @@ typedef enum video_out_mode_t
 } video_out_mode_t;
 
 #define VIDEO_MODE_DVI_MAX MODE_720x576_50Hz
+// the standard rate modes come first: one per resolution and div, each has its Pentagon rate pair after them
+#define VIDEO_MODE_STD_MAX MODE_1280x1024_60Hz_d4
 
 typedef enum cap_sync_mode_t
 {
@@ -322,6 +324,12 @@ typedef struct settings_t
   hw_config_t hw_config;
 #endif
   uint32_t crc;
+  // shift (shX, shY) per resolution and div, restored on a mode change. Indexed by the standard rate mode: its
+  // Pentagon rate pair shares the entry. After crc with its own check value, so settings saved without it keep
+  // everything else; an invalid table is filled from the mode presets.
+  uint8_t mode_shX[VIDEO_MODE_STD_MAX + 1];
+  uint8_t mode_shY[VIDEO_MODE_STD_MAX + 1];
+  uint32_t mode_crc;
 } settings_t;
 
 typedef struct video_mode_t
@@ -352,6 +360,7 @@ int video_mode_count(video_out_type_t type);                                // p
 uint8_t video_mode_select(video_out_type_t type, int index, bool pentagon); // the mode of a pair
 int video_mode_index(video_out_type_t type, uint8_t mode);                  // its pair, -1 if not of this output
 bool video_mode_pentagon(uint8_t mode);                                     // a Pentagon rate mode
+uint8_t video_mode_standard(uint8_t mode);                                  // its standard rate pair (or itself)
 const char *video_mode_name(uint8_t mode);                                  // OSD name, e.g. "640X480@48.8"
 
 extern uint8_t g_v_buf[];

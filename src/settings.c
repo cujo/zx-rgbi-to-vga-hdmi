@@ -93,6 +93,20 @@ void check_settings(settings_t *settings)
       settings->shY < shY_MIN)
     settings->shY = shY_DEF;
 
+  for (int m = 0; m <= VIDEO_MODE_STD_MAX; m++)
+  {
+    if (settings->mode_shX[m] > shX_MAX)
+      settings->mode_shX[m] = video_modes[m]->shX;
+
+    if (settings->mode_shY[m] > shY_MAX)
+      settings->mode_shY[m] = video_modes[m]->shY;
+  }
+
+  // the current shift belongs to the current mode
+  uint8_t std_mode = video_mode_standard(settings->video_out_mode);
+  settings->mode_shX[std_mode] = settings->shX;
+  settings->mode_shY[std_mode] = settings->shY;
+
   if (settings->pin_inversion_mask & ~PIN_INVERSION_MASK)
   {
     settings->pin_inversion_mask = PIN_INVERSION_MASK_DEF;
@@ -131,19 +145,31 @@ void check_settings(settings_t *settings)
 #endif
 
   settings->crc = calculate_settings_crc(settings);
+  settings->mode_crc = calculate_mode_shift_crc(settings);
+}
+
+// the shift table from the mode presets
+static void reset_mode_shifts(settings_t *settings)
+{
+  for (int m = 0; m <= VIDEO_MODE_STD_MAX; m++)
+  {
+    settings->mode_shX[m] = video_modes[m]->shX;
+    settings->mode_shY[m] = video_modes[m]->shY;
+  }
 }
 
 void reset_settings_to_defaults(settings_t *settings)
 {
   memcpy(settings, &default_settings, sizeof(settings_t));
+  reset_mode_shifts(settings);
+  settings->shX = video_modes[settings->video_out_mode]->shX;
+  settings->shY = video_modes[settings->video_out_mode]->shY;
   settings->crc = calculate_settings_crc(settings);
+  settings->mode_crc = calculate_mode_shift_crc(settings);
 }
 
-uint32_t calculate_settings_crc(const settings_t *settings)
+static uint32_t crc32(const uint8_t *data, size_t len)
 {
-  const uint8_t *data = (const uint8_t *)settings;
-  // CRC covers all fields except the crc field itself (last 4 bytes)
-  size_t len = offsetof(settings_t, crc);
   uint32_t crc = 0xFFFFFFFF;
 
   for (size_t i = 0; i < len; i++)
@@ -154,6 +180,28 @@ uint32_t calculate_settings_crc(const settings_t *settings)
   }
 
   return ~crc;
+}
+
+uint32_t calculate_settings_crc(const settings_t *settings)
+{
+  // CRC covers all fields before the crc field
+  return crc32((const uint8_t *)settings, offsetof(settings_t, crc));
+}
+
+uint32_t calculate_mode_shift_crc(const settings_t *settings)
+{
+  return crc32(settings->mode_shX, offsetof(settings_t, mode_crc) - offsetof(settings_t, mode_shX));
+}
+
+void switch_mode_shift(uint8_t old_mode)
+{
+  uint8_t old_std = video_mode_standard(old_mode);
+  uint8_t new_std = video_mode_standard(settings.video_out_mode);
+
+  settings.mode_shX[old_std] = settings.shX;
+  settings.mode_shY[old_std] = settings.shY;
+  settings.shX = settings.mode_shX[new_std];
+  settings.shY = settings.mode_shY[new_std];
 }
 
 void load_settings(settings_t *settings)
@@ -168,8 +216,14 @@ void load_settings(settings_t *settings)
     return;
   }
 
+  if (settings->mode_crc != calculate_mode_shift_crc(settings))
+    reset_mode_shifts(settings); // saved without the table (check_settings keeps the current mode's shift)
+
   check_settings(settings);
 }
+
+// save_settings programs one flash page
+_Static_assert(sizeof(settings_t) <= FLASH_PAGE_SIZE, "settings_t must fit in a flash page");
 
 void save_settings(settings_t *settings)
 {

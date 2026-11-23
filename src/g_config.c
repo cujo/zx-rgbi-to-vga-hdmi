@@ -412,6 +412,19 @@ bool video_mode_pentagon(uint8_t mode)
   return false;
 }
 
+uint8_t video_mode_standard(uint8_t mode)
+{
+  for (int i = 0; i < (int)count_of(modes_dvi); i++)
+    if (modes_dvi[i][1] == mode)
+      return modes_dvi[i][0];
+
+  for (int i = 0; i < (int)count_of(modes_vga); i++)
+    if (modes_vga[i][1] == mode)
+      return modes_vga[i][0];
+
+  return mode;
+}
+
 const char *video_mode_name(uint8_t mode)
 {
   return mode <= VIDEO_MODE_MAX && mode_names[mode] ? mode_names[mode] : "UNKNOWN";

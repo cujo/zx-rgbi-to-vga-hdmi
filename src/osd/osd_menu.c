@@ -141,9 +141,8 @@ static void osd_apply_video_mode(uint8_t old_mode)
         return;
 
     stop_video_output();
-    // Update the horizontal and vertical shift values for the new video mode
-    settings.shX = video_modes[settings.video_out_mode]->shX;
-    settings.shY = video_modes[settings.video_out_mode]->shY;
+    // keep the old mode's shift, restore the new mode's (its preset until adjusted)
+    switch_mode_shift(old_mode);
     start_video_output(active_video_output);
     // Adjust capture frequency for new system clock
     set_capture_frequency(settings.frequency);
@@ -542,9 +541,9 @@ void osd_menu_update()
                     menu_changed = osd_menu_go_back();
                 }
                 else if (osd_menu_state.selected_item == 3)
-                { // Reset to defaults
-                    set_capture_shX(shX_DEF);
-                    set_capture_shY(shY_DEF);
+                { // Reset to defaults (the shift: the current mode's preset)
+                    set_capture_shX(video_modes[settings.video_out_mode]->shX);
+                    set_capture_shY(video_modes[settings.video_out_mode]->shY);
                     set_capture_delay(DELAY_DEF);
                     osd_state.needs_redraw = true;
                     osd_menu_hide(); // Hide menu after resetting to defaults

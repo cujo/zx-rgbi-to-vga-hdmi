@@ -526,6 +526,7 @@ void handle_serial_menu()
                     inchar = get_menu_input(10);
 
                 uint8_t video_out_type = settings.video_out_type;
+                uint8_t old_mode = settings.video_out_mode;
 
                 switch (inchar)
                 {
@@ -556,9 +557,8 @@ void handle_serial_menu()
                 if (video_out_type != settings.video_out_type && active_video_output != settings.video_out_type)
                 {
                     stop_video_output();
-                    // Update the horizontal and vertical shift values for the new video mode
-                    settings.shX = video_modes[settings.video_out_mode]->shX;
-                    settings.shY = video_modes[settings.video_out_mode]->shY;
+                    // keep the old mode's shift, restore the new mode's (its preset until adjusted)
+                    switch_mode_shift(old_mode);
                     start_video_output(settings.video_out_type);
                     // capture PIO clock divider needs to be adjusted for new system clock frequency set in start_video_output()
                     set_capture_frequency(settings.frequency);
@@ -624,9 +624,8 @@ void handle_serial_menu()
                 if (video_out_mode != settings.video_out_mode && active_video_output == settings.video_out_type)
                 {
                     stop_video_output();
-                    // Update the horizontal and vertical shift values for the new video mode
-                    settings.shX = video_modes[settings.video_out_mode]->shX;
-                    settings.shY = video_modes[settings.video_out_mode]->shY;
+                    // keep the old mode's shift, restore the new mode's (its preset until adjusted)
+                    switch_mode_shift(video_out_mode);
                     start_video_output(active_video_output);
                     // capture PIO clock divider needs to be adjusted for new system clock frequency set in start_video_output()
                     set_capture_frequency(settings.frequency);
