@@ -33,9 +33,25 @@ For LEO V3 variants, use keyboard hotkeys for OSD navigation (F9, arrows, Enter,
 
 ### Opening the Menu
 
-- **Default behavior (boards with local buttons):** Press **UP**, **DOWN**, or **SEL** to open the OSD menu
+- **Default behavior (boards with local buttons):** Press **UP**, **DOWN**, or **SEL** to open the OSD menu (only
+  **SEL** with UP/DOWN set to SWITCH MODE)
 - **When FF OSD is enabled in FLASHFLOPPY protocol mode (boards with local buttons):** Hold **SEL** for about 1 second to open the menu
 - When opened by a long hold, input is blocked until all buttons are released once
+
+### Switching the Video Mode Without the Menu
+
+With **UP/DOWN** set to **SWITCH MODE** (OUTPUT SETTINGS; **DEFAULT** by default):
+
+- **Default behavior:** press **UP** / **DOWN** to step to the next / previous resolution of the current output at
+  the current RATE (in a loop); **SEL** opens the menu
+- **With FF OSD in FLASHFLOPPY protocol mode:** hold **UP** / **DOWN** for about 1 second. Short taps of UP / DOWN /
+  SEL go to the Gotek as single steps when the button is released, so holding a button does not step through images.
+- The new mode's name is shown for 5 seconds near the top left corner (clear of the monitor's own message); one
+  step per press or hold. The mode is kept until reboot unless saved with SAVE in the menu; the picture position of
+  each mode is restored (see IMAGE ADJUST).
+
+With DEFAULT, the buttons work as before: any button opens the menu, and with FF OSD in FLASHFLOPPY protocol mode
+UP / DOWN go to the Gotek at once, with repeat (holding steps through the images).
 
 ### Closing the Menu
 
@@ -74,6 +90,7 @@ EXIT
 ```text
 MODE         [resolution]    - Video output resolution
 RATE         STANDARD/PENTAGON - Frame rate: standard or the Pentagon's 48.8 Hz
+UP/DOWN      DEFAULT/SWITCH MODE - UP / DOWN outside the menu: as before or switch the mode
 SCANLINES    ON/OFF          - Scanline filter (VGA only, certain modes)
 BUFFERING    X1/X3           - Frame buffering mode (always X3 at the PENTAGON rate)
 < BACK TO MAIN

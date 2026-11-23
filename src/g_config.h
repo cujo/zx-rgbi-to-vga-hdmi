@@ -317,6 +317,7 @@ typedef struct settings_t
   int16_t shX;
   int16_t shY;
   uint8_t pin_inversion_mask;
+  uint8_t options; // OPTION_* flags; former padding before ff_osd_config / crc, so the layout does not change
 #ifdef OSD_FF_ENABLE
   ff_osd_config_t ff_osd_config;
 #endif
@@ -331,6 +332,14 @@ typedef struct settings_t
   uint8_t mode_shY[VIDEO_MODE_STD_MAX + 1];
   uint32_t mode_crc;
 } settings_t;
+
+// settings.options flags (0 in settings saved by older firmware: all off)
+// UP / DOWN SWITCH MODE (OSD). Off: UP / DOWN outside the menu work as before (open the menu; with the FF OSD they go
+// to the Gotek at once, with repeat). On: they step through the resolutions (with the FF OSD on a 1 s hold; short
+// taps go to the Gotek on release).
+#define OPTION_UPDOWN_SWITCH_MODE 0x01
+#define OPTIONS_MASK OPTION_UPDOWN_SWITCH_MODE
+#define UPDOWN_SWITCH_MODE (settings.options & OPTION_UPDOWN_SWITCH_MODE)
 
 typedef struct video_mode_t
 {

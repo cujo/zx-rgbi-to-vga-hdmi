@@ -179,6 +179,10 @@ void osd_set_position()
     case 5: // Right
         osd_mode.start_x = h_visible_area - osd_half_w;
         break;
+
+    case 6: // Near the left (1/8 of the way to the center)
+        osd_mode.start_x = (h_visible_area - osd_half_w) / 8;
+        break;
     }
 
     if (osd_mode.start_x + osd_half_w > h_visible_area)
@@ -198,6 +202,10 @@ void osd_set_position()
 
     case 2: // Bottom
         osd_mode.start_y = v_display_lines - osd_mode.height;
+        break;
+
+    case 3: // Near the top (1/8 of the way to the center)
+        osd_mode.start_y = (v_display_lines - osd_mode.height) / 8;
         break;
     }
 
@@ -413,7 +421,7 @@ void osd_update()
     // Menu OSD has higher priority
     osd_menu_update();
 
-    if (osd_state.menu_active)
+    if (osd_state.menu_active || osd_menu_toast_active())
     {
 #ifdef OSD_FF_ENABLE
         ff_osd_set_buttons(0);

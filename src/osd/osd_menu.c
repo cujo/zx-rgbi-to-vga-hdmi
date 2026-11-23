@@ -155,6 +155,91 @@ static void osd_toggle_video_rate()
     settings.video_out_mode = video_mode_select(settings.video_out_type, index, !video_mode_pentagon(settings.video_out_mode));
 }
 
+// the mode name shown for a while after a mode change with the buttons outside the menu (0 = not shown); long
+// enough to outlast the monitor's resync, and off center, clear of the monitor's own mode message
+#define MODE_TOAST_US 5000000u
+static uint64_t mode_toast_until = 0;
+
+bool osd_menu_toast_active()
+{
+    return mode_toast_until != 0;
+}
+
+static void osd_show_mode_toast()
+{
+    const char *name = video_mode_name(settings.video_out_mode);
+
+    osd_font = osd_font_style_1;
+    osd_mode.x = 6; // near the left
+    osd_mode.y = 3; // near the top
+    osd_mode.columns = strlen(name) + 4;
+    osd_mode.rows = 3;
+    osd_mode.border_enabled = true;
+    osd_mode.full_width = false;
+    osd_mode.width = osd_mode.columns * OSD_FONT_WIDTH;
+    osd_mode.height = osd_mode.rows * OSD_FONT_HEIGHT;
+    osd_mode.buffer_size = osd_mode.width * osd_mode.height / 2;
+    osd_set_position();
+    osd_clear_text_buffer();
+    osd_show();
+    osd_text_print_centered(1, name, OSD_COLOR_SELECTED, OSD_COLOR_BACKGROUND, 0);
+    osd_render_text_to_buffer();
+    mode_toast_until = time_us_64() + MODE_TOAST_US;
+}
+
+// FF OSD (I2C) shares the buttons with the Gotek: short taps go to the Gotek, long holds are ours
+static bool ff_osd_owns_buttons()
+{
+#ifdef OSD_FF_ENABLE
+    return settings.ff_osd_config.enabled && settings.ff_osd_config.i2c_protocol;
+#else
+    return false;
+#endif
+}
+
+// outside the menu with UP / DOWN SWITCH MODE on, they step through the resolutions of the output at the
+// current rate (a short press, a 1 s hold when the FF OSD shares the buttons); returns true when it did
+static bool osd_mode_hotkeys(uint64_t current_time)
+{
+    int8_t direction = 0;
+
+    if (!UPDOWN_SWITCH_MODE)
+        return false;
+
+#if defined(OSD_FF_ENABLE) && defined(KBD_ENABLE)
+    if (ff_osd_kbd_active)
+        return false; // the keyboard arrows control the Gotek (F10)
+#endif
+
+    if (ff_osd_owns_buttons())
+    {
+        if (osd_button_hold_duration_us(0, current_time) > OSD_HOLD_US)
+            direction = 1;
+        else if (osd_button_hold_duration_us(1, current_time) > OSD_HOLD_US)
+            direction = -1;
+    }
+    else if (osd_button_pressed(0))
+        direction = 1;
+    else if (osd_button_pressed(1))
+        direction = -1;
+
+    if (!direction)
+        return false;
+
+    // one step per press or hold; the release is not passed to the Gotek
+    osd_block_buttons_until_release();
+#ifdef OSD_FF_ENABLE
+    if (ff_osd_owns_buttons())
+        ff_osd_set_buttons(0);
+#endif
+
+    uint8_t old_mode = settings.video_out_mode;
+    osd_adjust_video_mode(direction);
+    osd_apply_video_mode(old_mode);
+    osd_show_mode_toast();
+    return true;
+}
+
 void osd_menu_update()
 {
     if (!osd_state.enabled)
@@ -181,19 +266,33 @@ void osd_menu_update()
         }
 
         uint64_t current_time = time_us_64();
+
+        if (mode_toast_until && current_time > mode_toast_until)
+        {
+            mode_toast_until = 0;
+            osd_hide();
+        }
+
+        if (osd_mode_hotkeys(current_time))
+            return;
+
         bool opened_by_long_hold = osd_button_hold_duration_us(2, current_time) > OSD_HOLD_US;
 
-        bool open_menu = osd_button_pressed(0) || osd_button_pressed(1) || osd_button_pressed(2);
-#ifdef OSD_FF_ENABLE
-        if (settings.ff_osd_config.enabled && settings.ff_osd_config.i2c_protocol)
+        // any button opens the menu; SEL only when UP / DOWN switch the video mode (osd_mode_hotkeys)
+        bool open_menu = osd_button_pressed(2);
+
+        if (!UPDOWN_SWITCH_MODE)
+            open_menu |= osd_button_pressed(0) || osd_button_pressed(1);
+
+        if (ff_osd_owns_buttons())
             open_menu = opened_by_long_hold;
-#endif
 #ifdef KBD_ENABLE
         open_menu |= kbd_open;
 #endif
 
         if (open_menu)
         {
+            mode_toast_until = 0;
             osd_state.menu_active = true;
             osd_font = osd_font_style_1;
             osd_mode.x = 0;
@@ -271,7 +370,7 @@ void osd_menu_update()
         if (osd_menu.current_menu == MENU_TYPE_MAIN)
             max_items = MAIN_ITEM_COUNT - 1;
         else if (osd_menu.current_menu == MENU_TYPE_OUTPUT)
-            max_items = 4; // Output menu: 0-4 (5 items: mode, rate, scanlines, buffering, back)
+            max_items = 5; // Output menu: 0-5 (6 items: mode, rate, up/down switch mode, scanlines, buffering, back)
         else if (osd_menu.current_menu == MENU_TYPE_CAPTURE)
             max_items = 5; // Capture menu: 0-5 (6 items: freq, mode, divider, sync, mask, back) - divider always shown but dimmed for SELF
         else if (osd_menu.current_menu == MENU_TYPE_IMAGE_ADJUST)
@@ -438,7 +537,7 @@ void osd_menu_update()
             }
             else if (osd_menu.current_menu == MENU_TYPE_OUTPUT)
             {                                // Output submenu selection
-                uint8_t back_item_index = 4; // 5 items (mode, rate, scanlines, buffering, back)
+                uint8_t back_item_index = 5; // 6 items (mode, rate, up/down switch mode, scanlines, buffering, back)
 
                 if (osd_menu_state.selected_item == back_item_index)
                 { // Back to Main
@@ -459,6 +558,11 @@ void osd_menu_update()
                     osd_state.needs_redraw = true;
                 }
                 else if (osd_menu_state.selected_item == 2)
+                { // UP / DOWN SWITCH MODE: on / off
+                    settings.options ^= OPTION_UPDOWN_SWITCH_MODE;
+                    osd_state.needs_redraw = true;
+                }
+                else if (osd_menu_state.selected_item == 3)
                 { // Scanlines - toggle
                     // Only allow toggle for VGA and when scanlines are supported
                     bool scanlines_supported = false;
@@ -482,7 +586,7 @@ void osd_menu_update()
                         osd_state.needs_redraw = true;
                     }
                 }
-                else if (osd_menu_state.selected_item == 3)
+                else if (osd_menu_state.selected_item == 4)
                 { // Buffering - toggle between X1 and X3 (at the Pentagon rate always X3)
                     if (!video_mode_pentagon(settings.video_out_mode))
                     {
@@ -777,13 +881,13 @@ static void render_output_menu()
 {
     osd_text_print_centered(OSD_SUBTITLE_ROW, "OUTPUT SETTINGS", OSD_COLOR_SELECTED, OSD_COLOR_BACKGROUND, 0);
 
-    for (int i = 0; i < 5; i++)
+    for (int i = 0; i < 6; i++)
     {
         uint8_t row = OSD_MENU_START_ROW + i;
         uint8_t color = OSD_COLOR_TEXT;
         uint8_t fg_color, bg_color;
 
-        if (i == 2)
+        if (i == 3)
         {
             if (settings.video_out_type == DVI)
                 color = OSD_COLOR_DIMMED;
@@ -798,7 +902,7 @@ static void render_output_menu()
             }
         }
 
-        if (i == 3 && video_mode_pentagon(settings.video_out_mode))
+        if (i == 4 && video_mode_pentagon(settings.video_out_mode))
             color = OSD_COLOR_DIMMED; // always X3 at the Pentagon rate
 
         menu_item_colors(i == osd_menu_state.selected_item, i < 2 && osd_menu_state.tuning_mode, color, &fg_color, &bg_color);
@@ -810,10 +914,12 @@ static void render_output_menu()
         else if (i == 1)
             osd_text_printf(row, 2, fg_color, bg_color, 0, "%-9s %s", "RATE", video_mode_pentagon(settings.video_out_mode) ? "PENTAGON" : "STANDARD");
         else if (i == 2)
-            osd_text_printf(row, 2, fg_color, bg_color, 0, "%-9s %s", "SCANLINES", settings.scanlines_mode ? "ON" : "OFF");
+            osd_text_printf(row, 2, fg_color, bg_color, 0, "%-9s %s", "UP/DOWN", UPDOWN_SWITCH_MODE ? "SWITCH MODE" : "DEFAULT");
         else if (i == 3)
-            osd_text_printf(row, 2, fg_color, bg_color, 0, "%-9s %s", "BUFFERING", buffering_x3() ? "X3" : "X1");
+            osd_text_printf(row, 2, fg_color, bg_color, 0, "%-9s %s", "SCANLINES", settings.scanlines_mode ? "ON" : "OFF");
         else if (i == 4)
+            osd_text_printf(row, 2, fg_color, bg_color, 0, "%-9s %s", "BUFFERING", buffering_x3() ? "X3" : "X1");
+        else if (i == 5)
             osd_text_print(row, 2, "< BACK TO MAIN", fg_color, bg_color, 0);
 
         if (i < 2 && i == osd_menu_state.selected_item && osd_menu_state.tuning_mode)

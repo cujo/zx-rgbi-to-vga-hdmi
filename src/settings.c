@@ -102,6 +102,8 @@ void check_settings(settings_t *settings)
       settings->mode_shY[m] = video_modes[m]->shY;
   }
 
+  settings->options &= OPTIONS_MASK;
+
   // the current shift belongs to the current mode
   uint8_t std_mode = video_mode_standard(settings->video_out_mode);
   settings->mode_shX[std_mode] = settings->shX;

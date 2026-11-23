@@ -95,6 +95,7 @@ void print_video_out_menu()
         printf("  %d   %s\n", i + 1, video_mode_name(video_mode_select(settings.video_out_type, i, pentagon)));
 
     printf("\n  r   frame rate: standard / Pentagon (48.8 Hz), now %s\n", pentagon ? "Pentagon" : "standard");
+    printf("  u   UP / DOWN buttons outside the OSD menu: default / switch mode, now %s\n", UPDOWN_SWITCH_MODE ? "switch mode" : "default");
     printf("\n  p   show configuration\n");
     printf("  h   show help (this menu)\n");
     printf("  q   exit to main menu\n\n");
@@ -610,6 +611,11 @@ void handle_serial_menu()
                         print_video_out_mode();
                     }
 
+                    break;
+
+                case 'u': // UP / DOWN SWITCH MODE on / off
+                    settings.options ^= OPTION_UPDOWN_SWITCH_MODE;
+                    printf("  UP / DOWN buttons ........... %s\n", UPDOWN_SWITCH_MODE ? "switch mode" : "default");
                     break;
 
                 case 'r': // the same resolution at the other frame rate
