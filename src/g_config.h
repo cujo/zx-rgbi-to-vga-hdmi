@@ -409,13 +409,30 @@ typedef struct settings_t
   uint32_t mode_crc;
 } settings_t;
 
-// settings.options flags (0 in settings saved by older firmware: all off)
-// UP / DOWN SWITCH MODE (OSD). Off: UP / DOWN outside the menu work as before (open the menu; with the FF OSD they go
+// settings.options flags (0 in settings saved by older firmware: all off). The OSD item BUTTONS sets them together:
+// DEFAULT (none), MODE SWITCH (OPTION_UPDOWN_SWITCH_MODE), SLIM EXT KBD (both); see buttons_mode().
+// OPTION_UPDOWN_SWITCH_MODE. Off: UP / DOWN outside the menu work as before (open the menu; with the FF OSD they go
 // to the Gotek at once, with repeat). On: they step through the resolutions (with the FF OSD on a 1 s hold; short
 // taps go to the Gotek on release).
 #define OPTION_UPDOWN_SWITCH_MODE 0x01
-#define OPTIONS_MASK OPTION_UPDOWN_SWITCH_MODE
+// OPTION_SLIM_EXT_KBD (only with OPTION_UPDOWN_SWITCH_MODE). For the three button lines driven by the Fn + arrow
+// keys of the Slim ZX-Ext-Keyboard through its Gotek button connector (Fn + RIGHT pulls UP, Fn + LEFT pulls DOWN,
+// Fn + DOWN pulls SEL, Fn + UP pulls UP and DOWN together). Inside the menu the arrows then work as arrows:
+// Fn + UP / DOWN move, Fn + RIGHT selects, Fn + LEFT goes back. Outside the menu the lines are read as UP / DOWN /
+// SEL.
+#define OPTION_SLIM_EXT_KBD 0x02
+#define OPTIONS_MASK (OPTION_UPDOWN_SWITCH_MODE | OPTION_SLIM_EXT_KBD)
 #define UPDOWN_SWITCH_MODE (settings.options & OPTION_UPDOWN_SWITCH_MODE)
+#define SLIM_EXT_KBD (settings.options & OPTION_SLIM_EXT_KBD)
+
+// BUTTONS (settings.options): DEFAULT, MODE SWITCH, SLIM EXT KBD
+enum
+{
+  BUTTONS_DEFAULT,
+  BUTTONS_MODE_SWITCH,
+  BUTTONS_SLIM_EXT_KBD,
+  BUTTONS_MODE_COUNT
+};
 
 typedef struct video_mode_t
 {

@@ -34,13 +34,13 @@ For LEO V3 variants, use keyboard hotkeys for OSD navigation (F9, arrows, Enter,
 ### Opening the Menu
 
 - **Default behavior (boards with local buttons):** Press **UP**, **DOWN**, or **SEL** to open the OSD menu (only
-  **SEL** with UP/DOWN set to SWITCH MODE)
+  **SEL** with BUTTONS set to MODE SWITCH or SLIM EXT KBD)
 - **When FF OSD is enabled in FLASHFLOPPY protocol mode (boards with local buttons):** Hold **SEL** for about 1 second to open the menu
 - When opened by a long hold, input is blocked until all buttons are released once
 
 ### Switching the Video Mode Without the Menu
 
-With **UP/DOWN** set to **SWITCH MODE** (OUTPUT SETTINGS; **DEFAULT** by default):
+With **BUTTONS** set to **MODE SWITCH** or **SLIM EXT KBD** (OUTPUT SETTINGS; **DEFAULT** by default):
 
 - **Default behavior:** press **UP** / **DOWN** to step to the next / previous resolution of the current output at
   the current RATE (in a loop); **SEL** opens the menu
@@ -52,6 +52,32 @@ With **UP/DOWN** set to **SWITCH MODE** (OUTPUT SETTINGS; **DEFAULT** by default
 
 With DEFAULT, the buttons work as before: any button opens the menu, and with FF OSD in FLASHFLOPPY protocol mode
 UP / DOWN go to the Gotek at once, with repeat (holding steps through the images).
+
+### Buttons Driven by the Slim ZX-Ext-Keyboard (BUTTONS: SLIM EXT KBD)
+
+For boards where the three button lines are wired to the Fn + arrow outputs of the Slim ZX-Ext-Keyboard (its Gotek
+button connector) instead of, or in parallel with, the local buttons: Fn + RIGHT pulls UP, Fn + LEFT pulls DOWN,
+Fn + DOWN pulls SEL, and Fn + UP pulls UP and DOWN together. This is not the PS/2 or USB keyboard connected to the
+converter itself.
+
+With **BUTTONS** set to **SLIM EXT KBD** (OUTPUT SETTINGS) the arrows work as arrows inside the menu:
+
+| Keys       | Lines pulled | In the menu                                              |
+|------------|--------------|----------------------------------------------------------|
+| Fn + UP    | UP + DOWN    | Navigate up / Increase value                             |
+| Fn + DOWN  | SEL          | Navigate down / Decrease value                           |
+| Fn + RIGHT | UP           | Select item / Toggle mode / Confirm                      |
+| Fn + LEFT  | DOWN         | Back: end an adjustment, up one level, close the menu    |
+
+- Outside the menu SLIM EXT KBD works as MODE SWITCH, the lines are UP / DOWN / SEL: Fn + RIGHT / Fn + LEFT switch
+  the video mode (with FF OSD in FLASHFLOPPY protocol mode on a 1 second hold, short taps go to the Gotek), a long
+  hold of Fn + DOWN (SEL) opens the menu.
+- The key that opened or closed the menu, or applied BUTTONS, has to be released before the next one counts.
+- Local buttons on the same lines follow the same reading inside the menu (UP selects, DOWN goes back, SEL moves
+  down, UP + DOWN moves up).
+
+With any BUTTONS setting a button state counts only after the three lines have been steady for 10 ms, so short
+spikes on long button wires are not taken for presses.
 
 ### Closing the Menu
 
@@ -91,7 +117,7 @@ EXIT
 ```text
 MODE         [resolution]    - Video output resolution
 RATE         STANDARD/PENTAGON - Frame rate: standard or the Pentagon's 48.8 Hz
-UP/DOWN      DEFAULT/SWITCH MODE - UP / DOWN outside the menu: as before or switch the mode
+BUTTONS      DEFAULT/MODE SWITCH/SLIM EXT KBD - Button behavior (see below)
 BUFFERING    X1/X3           - Frame buffering mode (always X3 at the PENTAGON rate)
 < BACK TO MAIN
 ```
@@ -110,6 +136,15 @@ BUFFERING    X1/X3           - Frame buffering mode (always X3 at the PENTAGON r
 - Press SEL to enter tuning mode, UP/DOWN to switch the rate (MODE shows the result), SEL again to apply, as with
   MODE
 - At 48.8 Hz BUFFERING is X3 (dimmed); the setting is kept for the standard rate
+
+**BUTTONS Setting:**
+
+- DEFAULT: any button opens the menu; with FF OSD in FLASHFLOPPY protocol mode UP / DOWN go to the Gotek at once
+- MODE SWITCH: UP / DOWN outside the menu switch the video mode (see Switching the Video Mode Without the Menu)
+- SLIM EXT KBD: MODE SWITCH, and inside the menu the lines are read as the Fn + arrows of the Slim
+  ZX-Ext-Keyboard (see Buttons Driven by the Slim ZX-Ext-Keyboard)
+- Press SEL to enter tuning mode, UP/DOWN to choose, SEL again to apply, as with MODE. The new reading of the lines
+  starts once the key that applied it is released.
 
 **Available Resolutions (each at the standard rate and at 48.8 Hz):**
 

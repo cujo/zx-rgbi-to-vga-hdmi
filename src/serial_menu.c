@@ -96,7 +96,7 @@ void print_video_out_menu()
         printf("  %d   %s\n", i + 1, video_mode_name(video_mode_select(settings.video_out_type, i, pentagon)));
 
     printf("\n  r   frame rate: standard / Pentagon (48.8 Hz), now %s\n", pentagon ? "Pentagon" : "standard");
-    printf("  u   UP / DOWN buttons outside the OSD menu: default / switch mode, now %s\n", UPDOWN_SWITCH_MODE ? "switch mode" : "default");
+    printf("  u   OSD buttons: default / mode switch / Slim Ext Kbd (Fn + arrows), now %s\n", buttons_mode_name(buttons_mode()));
     printf("\n  p   show configuration\n");
     printf("  h   show help (this menu)\n");
     printf("  q   exit to main menu\n\n");
@@ -520,7 +520,8 @@ void print_settings()
 
 void handle_serial_menu()
 {
-    char inchar = get_menu_input(100);
+    // 1 ms, not longer: this wait is in the main loop whenever the OSD is hidden, and the loop reads the buttons
+    char inchar = get_menu_input(1);
 
     if (inchar == 0)
         return;
@@ -637,9 +638,9 @@ void handle_serial_menu()
 
                     break;
 
-                case 'u': // UP / DOWN SWITCH MODE on / off
-                    settings.options ^= OPTION_UPDOWN_SWITCH_MODE;
-                    printf("  UP / DOWN buttons ........... %s\n", UPDOWN_SWITCH_MODE ? "switch mode" : "default");
+                case 'u': // BUTTONS: DEFAULT -> MODE SWITCH -> SLIM EXT KBD -> DEFAULT
+                    set_buttons_mode((buttons_mode() + 1) % BUTTONS_MODE_COUNT);
+                    printf("  OSD buttons ................. %s\n", buttons_mode_name(buttons_mode()));
                     break;
 
                 case 'r': // the same resolution at the other frame rate

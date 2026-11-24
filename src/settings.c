@@ -115,6 +115,10 @@ void check_settings(settings_t *settings)
 
   settings->options &= OPTIONS_MASK;
 
+  // SLIM EXT KBD includes MODE SWITCH
+  if (settings->options & OPTION_SLIM_EXT_KBD)
+    settings->options |= OPTION_UPDOWN_SWITCH_MODE;
+
   // the current shift belongs to the current mode
   uint8_t std_mode = video_mode_standard(settings->video_out_mode);
   settings->mode_shX[std_mode] = settings->shX;
@@ -263,4 +267,29 @@ void save_settings(settings_t *settings)
 
   stop_core1 = false;
   core1_inactive = false;
+}
+
+uint8_t buttons_mode()
+{
+  if (SLIM_EXT_KBD)
+    return BUTTONS_SLIM_EXT_KBD;
+
+  return UPDOWN_SWITCH_MODE ? BUTTONS_MODE_SWITCH : BUTTONS_DEFAULT;
+}
+
+void set_buttons_mode(uint8_t mode)
+{
+  settings.options &= ~(OPTION_UPDOWN_SWITCH_MODE | OPTION_SLIM_EXT_KBD);
+
+  if (mode == BUTTONS_SLIM_EXT_KBD)
+    settings.options |= OPTION_UPDOWN_SWITCH_MODE | OPTION_SLIM_EXT_KBD;
+  else if (mode == BUTTONS_MODE_SWITCH)
+    settings.options |= OPTION_UPDOWN_SWITCH_MODE;
+}
+
+const char *buttons_mode_name(uint8_t mode)
+{
+  static const char *names[BUTTONS_MODE_COUNT] = {"DEFAULT", "MODE SWITCH", "SLIM EXT KBD"};
+
+  return mode < BUTTONS_MODE_COUNT ? names[mode] : "?";
 }

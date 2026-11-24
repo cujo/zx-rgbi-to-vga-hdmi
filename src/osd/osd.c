@@ -23,7 +23,15 @@
 #define DEBOUNCE_TIME_US 20000 // 20ms debounce (mechanical bounce filter only)
 #define REPEAT_DELAY_US 400000 // 400ms initial repeat delay
 #define REPEAT_RATE_US 80000   // 80ms repeat rate
+#define BTN_FILTER_US 10000    // the button lines count once all three have been unchanged for 10 ms
 
+// logical buttons, as returned by osd_buttons_read()
+#define BTN_UP 0x01
+#define BTN_DOWN 0x02
+#define BTN_SEL 0x04
+#define BTN_BACK 0x08
+
+extern settings_t settings;
 extern video_mode_t video_mode;
 extern int16_t h_visible_area;
 extern int16_t v_margin;
@@ -471,6 +479,76 @@ void osd_buttons_init()
     osd_state.show_time = current_time;
 }
 
+// The three button lines (active LOW with pull-up) as logical buttons (BTN_*).
+// The lines are polled far faster than once a frame, so a spike of a few microseconds (crosstalk between long
+// button wires, contact bounce) would count as a press: a state is taken only after all three lines have been
+// unchanged for BTN_FILTER_US.
+// With BUTTONS: SLIM EXT KBD, inside the menu, the lines are read as the Fn + arrow keys that drive them: UP and
+// DOWN together (Fn + UP) = UP, SEL (Fn + DOWN) = DOWN, UP alone (Fn + RIGHT) = SEL, DOWN alone (Fn + LEFT) = BACK.
+// The key is decided once, when the lines leave the released state, and holds until they are all released again,
+// so the two lines of Fn + UP letting go one after the other is not a second key. When the reading changes (the
+// menu opens or closes, BUTTONS is set), the key that did it has to be released before the new reading starts;
+// until then it stays held as it was read, so a SEL hold that opened the menu still reaches the 5 s VGA / DVI
+// toggle.
+static uint8_t osd_buttons_read(uint64_t current_time)
+{
+    static uint8_t raw_last = 0;
+    static uint8_t raw_stable = 0;
+    static uint64_t raw_since = 0;
+    static uint8_t slim_key = 0;
+    static bool slim_menu = false;
+    static bool wait_release = false;
+    static uint8_t buttons = 0; // the last result
+
+    uint8_t raw = (gpio_get(OSD_BTN_UP) ? 0 : BTN_UP) |
+                  (gpio_get(OSD_BTN_DOWN) ? 0 : BTN_DOWN) |
+                  (gpio_get(OSD_BTN_SEL) ? 0 : BTN_SEL);
+
+    if (raw != raw_last)
+    {
+        raw_last = raw;
+        raw_since = current_time;
+    }
+    else if (current_time - raw_since >= BTN_FILTER_US)
+        raw_stable = raw;
+
+    bool slim = SLIM_EXT_KBD && osd_state.menu_active;
+
+    if (slim != slim_menu)
+    {
+        slim_menu = slim;
+        slim_key = 0;
+        wait_release = true;
+    }
+
+    if (wait_release)
+    {
+        if (raw_stable)
+            return buttons;
+
+        wait_release = false;
+    }
+
+    if (!slim)
+        return buttons = raw_stable;
+
+    if (!raw_stable)
+        slim_key = 0;
+    else if (!slim_key)
+    {
+        if ((raw_stable & (BTN_UP | BTN_DOWN)) == (BTN_UP | BTN_DOWN))
+            slim_key = BTN_UP;
+        else if (raw_stable & BTN_SEL)
+            slim_key = BTN_DOWN;
+        else if (raw_stable & BTN_UP)
+            slim_key = BTN_SEL;
+        else
+            slim_key = BTN_BACK;
+    }
+
+    return buttons = slim_key;
+}
+
 void osd_buttons_update()
 {
     if (!osd_state.enabled)
@@ -479,11 +557,22 @@ void osd_buttons_update()
     uint64_t current_time = time_us_64();
 
     // Handle button input
-    // Read button states (buttons are active LOW with pull-up)
+    uint8_t buttons = osd_buttons_read(current_time);
+
     bool button_states[3] = {
-        !gpio_get(OSD_BTN_UP),
-        !gpio_get(OSD_BTN_DOWN),
-        !gpio_get(OSD_BTN_SEL)};
+        buttons & BTN_UP,
+        buttons & BTN_DOWN,
+        buttons & BTN_SEL};
+
+    // BACK: one event per press, no repeat
+    bool back = buttons & BTN_BACK;
+
+    if (!back)
+        osd_buttons.back_pressed = false;
+    else if (!osd_buttons.back_held)
+        osd_buttons.back_pressed = true;
+
+    osd_buttons.back_held = back;
 
     bool *button_pressed[3] = {
         &osd_buttons.up_pressed,
@@ -614,7 +703,7 @@ uint64_t osd_button_hold_duration_us(uint8_t button, uint64_t current_time)
 
 bool osd_any_button_held()
 {
-    return osd_buttons.key_held[0] || osd_buttons.key_held[1] || osd_buttons.key_held[2];
+    return osd_buttons.key_held[0] || osd_buttons.key_held[1] || osd_buttons.key_held[2] || osd_buttons.back_held;
 }
 
 void osd_clear_pressed_buttons()
@@ -622,6 +711,7 @@ void osd_clear_pressed_buttons()
     osd_buttons.up_pressed = false;
     osd_buttons.down_pressed = false;
     osd_buttons.sel_pressed = false;
+    osd_buttons.back_pressed = false;
 }
 
 void osd_block_buttons_until_release()

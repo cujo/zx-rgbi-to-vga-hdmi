@@ -198,8 +198,8 @@ static bool ff_osd_owns_buttons()
 #endif
 }
 
-// outside the menu with UP / DOWN SWITCH MODE on, they step through the resolutions of the output at the
-// current rate (a short press, a 1 s hold when the FF OSD shares the buttons); returns true when it did
+// outside the menu with BUTTONS: MODE SWITCH (or SLIM EXT KBD), they step through the resolutions of the output
+// at the current rate (a short press, a 1 s hold when the FF OSD shares the buttons); returns true when it did
 static bool osd_mode_hotkeys(uint64_t current_time)
 {
     int8_t direction = 0;
@@ -371,7 +371,7 @@ void osd_menu_update()
         if (osd_menu.current_menu == MENU_TYPE_MAIN)
             max_items = MAIN_ITEM_COUNT - 1;
         else if (osd_menu.current_menu == MENU_TYPE_OUTPUT)
-            max_items = 4; // Output menu: 0-4 (5 items: mode, rate, up/down switch mode, buffering, back)
+            max_items = 4; // Output menu: 0-4 (5 items: mode, rate, buttons, buffering, back)
         else if (osd_menu.current_menu == MENU_TYPE_CRT)
             max_items = CRT_SETTING_COUNT; // CRT effects menu: the settings (crt_setting_t order), back
         else if (osd_menu.current_menu == MENU_TYPE_CAPTURE)
@@ -397,12 +397,14 @@ void osd_menu_update()
         if (osd_button_pressed(0))
         {                          // UP button
             osd_update_activity(); // Reset timeout on user interaction
-            if (osd_menu.current_menu == MENU_TYPE_OUTPUT && osd_menu_state.tuning_mode && osd_menu_state.selected_item < 2)
-            { // Video mode / rate adjustment
+            if (osd_menu.current_menu == MENU_TYPE_OUTPUT && osd_menu_state.tuning_mode && osd_menu_state.selected_item < 3)
+            { // Video mode / rate / buttons adjustment
                 if (osd_menu_state.selected_item == 0)
                     osd_adjust_video_mode(1);
-                else
+                else if (osd_menu_state.selected_item == 1)
                     osd_toggle_video_rate();
+                else
+                    osd_menu_state.buttons_pending = (osd_menu_state.buttons_pending + 1) % BUTTONS_MODE_COUNT;
                 osd_state.needs_redraw = true;
             }
             else if (osd_menu.current_menu == MENU_TYPE_IMAGE_ADJUST && osd_menu_state.tuning_mode && osd_menu_state.selected_item < 3)
@@ -443,12 +445,14 @@ void osd_menu_update()
         if (osd_button_pressed(1))
         {                          // DOWN button
             osd_update_activity(); // Reset timeout on user interaction
-            if (osd_menu.current_menu == MENU_TYPE_OUTPUT && osd_menu_state.tuning_mode && osd_menu_state.selected_item < 2)
-            { // Video mode / rate adjustment
+            if (osd_menu.current_menu == MENU_TYPE_OUTPUT && osd_menu_state.tuning_mode && osd_menu_state.selected_item < 3)
+            { // Video mode / rate / buttons adjustment
                 if (osd_menu_state.selected_item == 0)
                     osd_adjust_video_mode(-1);
-                else
+                else if (osd_menu_state.selected_item == 1)
                     osd_toggle_video_rate();
+                else
+                    osd_menu_state.buttons_pending = (osd_menu_state.buttons_pending + BUTTONS_MODE_COUNT - 1) % BUTTONS_MODE_COUNT;
                 osd_state.needs_redraw = true;
             }
             else if (osd_menu.current_menu == MENU_TYPE_IMAGE_ADJUST && osd_menu_state.tuning_mode && osd_menu_state.selected_item < 3)
@@ -485,6 +489,24 @@ void osd_menu_update()
             }
 
             osd_buttons.down_pressed = false;
+        }
+
+        // BACK (BUTTONS: SLIM EXT KBD, Fn + LEFT): ends an adjustment the way SEL does, otherwise up one menu level,
+        // from the main menu closes the menu (as EXIT, nothing is saved)
+        if (osd_buttons.back_pressed)
+        {
+            osd_buttons.back_pressed = false;
+            osd_update_activity();
+
+            if (osd_menu_state.tuning_mode)
+                osd_buttons.sel_pressed = true;
+            else if (osd_menu.menu_depth > 0)
+            {
+                osd_menu_go_back();
+                osd_block_buttons_until_release();
+            }
+            else
+                osd_menu_hide();
         }
 
         // Handle selection in different menus
@@ -544,7 +566,7 @@ void osd_menu_update()
             }
             else if (osd_menu.current_menu == MENU_TYPE_OUTPUT)
             {                                // Output submenu selection
-                uint8_t back_item_index = 4; // 5 items (mode, rate, up/down switch mode, buffering, back)
+                uint8_t back_item_index = 4; // 5 items (mode, rate, buttons, buffering, back)
 
                 if (osd_menu_state.selected_item == back_item_index)
                 { // Back to Main
@@ -565,8 +587,18 @@ void osd_menu_update()
                     osd_state.needs_redraw = true;
                 }
                 else if (osd_menu_state.selected_item == 2)
-                { // UP / DOWN SWITCH MODE: on / off
-                    settings.options ^= OPTION_UPDOWN_SWITCH_MODE;
+                { // BUTTONS: DEFAULT / MODE SWITCH / SLIM EXT KBD - chosen in tuning mode, applied on SEL. A new
+                  // reading of the lines (SLIM EXT KBD on or off) starts once the key that applied it is released.
+                    if (osd_menu_state.tuning_mode)
+                    {
+                        set_buttons_mode(osd_menu_state.buttons_pending);
+                        osd_menu_state.tuning_mode = false;
+                    }
+                    else
+                    {
+                        osd_menu_state.buttons_pending = buttons_mode();
+                        osd_menu_state.tuning_mode = true;
+                    }
                     osd_state.needs_redraw = true;
                 }
                 else if (osd_menu_state.selected_item == 3)
@@ -908,11 +940,12 @@ static void render_output_menu()
         uint8_t row = OSD_MENU_START_ROW + i;
         uint8_t color = OSD_COLOR_TEXT;
         uint8_t fg_color, bg_color;
+        bool tuning = i < 3 && i == osd_menu_state.selected_item && osd_menu_state.tuning_mode;
 
         if (i == 3 && video_mode_pentagon(settings.video_out_mode))
             color = OSD_COLOR_DIMMED; // always X3 at the Pentagon rate
 
-        menu_item_colors(i == osd_menu_state.selected_item, i < 2 && osd_menu_state.tuning_mode, color, &fg_color, &bg_color);
+        menu_item_colors(i == osd_menu_state.selected_item, i < 3 && osd_menu_state.tuning_mode, color, &fg_color, &bg_color);
 
         if (i == 0)
         {
@@ -920,14 +953,14 @@ static void render_output_menu()
         }
         else if (i == 1)
             osd_text_printf(row, 2, fg_color, bg_color, 0, "%-9s %s", "RATE", video_mode_pentagon(settings.video_out_mode) ? "PENTAGON" : "STANDARD");
-        else if (i == 2)
-            osd_text_printf(row, 2, fg_color, bg_color, 0, "%-9s %s", "UP/DOWN", UPDOWN_SWITCH_MODE ? "SWITCH MODE" : "DEFAULT");
+        else if (i == 2) // in tuning mode the value to apply
+            osd_text_printf(row, 2, fg_color, bg_color, 0, "%-9s %s", "BUTTONS", buttons_mode_name(tuning ? osd_menu_state.buttons_pending : buttons_mode()));
         else if (i == 3)
             osd_text_printf(row, 2, fg_color, bg_color, 0, "%-9s %s", "BUFFERING", buffering_x3() ? "X3" : "X1");
         else if (i == 4)
             osd_text_print(row, 2, "< BACK TO MAIN", fg_color, bg_color, 0);
 
-        if (i < 2 && i == osd_menu_state.selected_item && osd_menu_state.tuning_mode)
+        if (tuning)
             osd_text_set_char(row, 1, '>', fg_color, bg_color);
     }
 }

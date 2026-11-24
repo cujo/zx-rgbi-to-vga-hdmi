@@ -59,6 +59,8 @@ typedef struct
     uint64_t last_repeat_time[3];  // Last repeat trigger time
     bool key_held[3];              // Is key currently held down
     bool sel_long_press_triggered; // True if SEL long press (>5s) has been triggered
+    bool back_pressed;             // BACK (BUTTONS: SLIM EXT KBD, Fn + LEFT inside the menu), cleared by the menu
+    bool back_held;
 } osd_buttons_t;
 
 extern osd_state_t osd_state;

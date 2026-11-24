@@ -49,8 +49,9 @@ static const uint I2C_SLAVE_SCL_PIN = I2C_PIN_SCL;
 #define FF_OSD_BUTTON_RIGHT 2
 #define FF_OSD_BUTTON_SELECT 4
 
-#define FF_OSD_BUTTON_PULSE_FRAMES 30
-#define FF_OSD_STEP_PULSE_US 200000 // RIGHT / LEFT: one step (timed, the main loop rate differs between boards)
+// Release pulses are timed: the main loop rate differs between boards and with the OSD shown or hidden
+#define FF_OSD_SEL_PULSE_US 200000  // SELECT
+#define FF_OSD_STEP_PULSE_US 200000 // RIGHT / LEFT: one step
 
 #define FF_OSD_KBD_TIMEOUT_US 10000000 // 10 seconds — same as OSD menu timeout
 
@@ -73,11 +74,9 @@ bool ff_osd_kbd_active = false; // F10 toggle: keyboard controls Gotek
 // SELECT forwarding state in FlashFloppy mode:
 // - short tap: forwarded on release as a brief pulse
 // - long hold: reserved for opening local OSD menu, not forwarded to Gotek
-// I2C protocol: per button (UP, DOWN, SEL) held on the previous frame; the release pulse: SEL frames left, UP /
-// DOWN its end time (0 = none)
+// I2C protocol: per button (UP, DOWN, SEL) held on the previous frame; the end time of its release pulse (0 = none)
 static bool ff_btn_prev_held[3];
-static uint8_t ff_sel_pulse_frames;
-static uint64_t ff_step_pulse_until[2];
+static uint64_t ff_pulse_until[3];
 static const uint8_t ff_btn_codes[3] = {FF_OSD_BUTTON_RIGHT, FF_OSD_BUTTON_LEFT, FF_OSD_BUTTON_SELECT};
 static bool ff_osd_display_was_on = false; // Track display on→off transition
 
@@ -497,20 +496,16 @@ void ff_osd_update()
     if (block_ff_buttons)
     {
         memset(ff_btn_prev_held, 0, sizeof(ff_btn_prev_held));
-        ff_sel_pulse_frames = 0;
-        memset(ff_step_pulse_until, 0, sizeof(ff_step_pulse_until));
+        memset(ff_pulse_until, 0, sizeof(ff_pulse_until));
     }
     else if (settings.ff_osd_config.i2c_protocol)
     {
-        // Release-triggered pulses: SEL (SELECT), and UP (RIGHT) / DOWN (LEFT) with UP / DOWN SWITCH MODE on, are
-        // forwarded on release as a brief pulse, but ONLY for short taps (< OSD_HOLD_US). Long holds are the local
-        // OSD's: SEL opens the menu, UP / DOWN switch the video mode (osd_menu.c); the Gotek never sees them. The
-        // SELECT pulse (30 frames ~ 500 ms) is long enough for FlashFloppy to catch on its next I2C poll; RIGHT /
-        // LEFT pulses are shorter (200 ms, timed), so a step is not taken for a held button and repeated. With
-        // UP / DOWN SWITCH MODE off, UP / DOWN go to the Gotek at once, with repeat (holding steps through the
-        // images).
-        // This mechanism is reliable because osd_buttons_update() is called only once per frame when
-        // OSD_MENU_ENABLE is active (#ifndef guard above).
+        // Release-triggered pulses: SEL (SELECT), and UP (RIGHT) / DOWN (LEFT) with BUTTONS: MODE SWITCH or
+        // SLIM EXT KBD, are forwarded on release as a brief pulse, but ONLY for short taps (< OSD_HOLD_US). Long
+        // holds are the local OSD's: SEL opens the menu, UP / DOWN switch the video mode (osd_menu.c); the Gotek
+        // never sees them. The pulses (200 ms, timed) are long enough for FlashFloppy to catch on its next I2C
+        // poll and short enough that a step is not taken for a held button and repeated. With BUTTONS: DEFAULT,
+        // UP / DOWN go to the Gotek at once, with repeat (holding steps through the images).
         for (int i = 0; i < 3; i++)
         {
             bool held = osd_button_held(i);
@@ -518,7 +513,7 @@ void ff_osd_update()
             if (i < 2 && !UPDOWN_SWITCH_MODE)
             {
                 ff_btn_prev_held[i] = false;
-                ff_step_pulse_until[i] = 0;
+                ff_pulse_until[i] = 0;
 
                 if (osd_button_pressed(i))
                     buttons |= ff_btn_codes[i];
@@ -531,27 +526,17 @@ void ff_osd_update()
                 uint64_t hold_us = time_us_64() - osd_buttons.key_hold_start[i];
 
                 if (hold_us < OSD_HOLD_US)
-                {
-                    if (i == 2)
-                        ff_sel_pulse_frames = FF_OSD_BUTTON_PULSE_FRAMES;
-                    else
-                        ff_step_pulse_until[i] = time_us_64() + FF_OSD_STEP_PULSE_US;
-                }
+                    ff_pulse_until[i] = time_us_64() + (i == 2 ? FF_OSD_SEL_PULSE_US : FF_OSD_STEP_PULSE_US);
             }
 
             ff_btn_prev_held[i] = held;
 
-            if (i == 2 && ff_sel_pulse_frames > 0)
+            if (ff_pulse_until[i])
             {
-                buttons |= ff_btn_codes[i];
-                ff_sel_pulse_frames--;
-            }
-            else if (i < 2 && ff_step_pulse_until[i])
-            {
-                if (time_us_64() < ff_step_pulse_until[i])
+                if (time_us_64() < ff_pulse_until[i])
                     buttons |= ff_btn_codes[i];
                 else
-                    ff_step_pulse_until[i] = 0;
+                    ff_pulse_until[i] = 0;
             }
         }
     }
@@ -559,8 +544,7 @@ void ff_osd_update()
     {
         // LCD mode: preserve previous immediate-press behavior.
         memset(ff_btn_prev_held, 0, sizeof(ff_btn_prev_held));
-        ff_sel_pulse_frames = 0;
-        memset(ff_step_pulse_until, 0, sizeof(ff_step_pulse_until));
+        memset(ff_pulse_until, 0, sizeof(ff_pulse_until));
 
         if (osd_button_pressed(0)) // UP -> RIGHT
             buttons |= FF_OSD_BUTTON_RIGHT;

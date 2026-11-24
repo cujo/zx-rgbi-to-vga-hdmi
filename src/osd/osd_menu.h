@@ -24,6 +24,7 @@ typedef struct
     uint8_t selected_item;       // Currently selected menu item
     bool tuning_mode;            // True when adjusting parameters, false for navigation
     uint8_t original_video_mode; // Store original mode when entering video mode tuning
+    uint8_t buttons_pending;     // BUTTONS value chosen in tuning mode, applied on SEL (BUTTONS_*)
 } osd_menu_state_t;
 
 typedef struct
